@@ -13,8 +13,9 @@ printed to the terminal. The proxy changes nothing: headers go through untouched
 and the reply is streamed back byte for byte as it arrives.
 
 Open http://localhost:8041 in a browser for a live dashboard of the decoded
-conversation (see SPEC.md). `GET /`, `GET /events` and `POST /clear` are served
-locally; every other path is forwarded.
+conversation and every other call the harness makes (see SPEC.md). `GET /`,
+`GET /events`, `GET /raw/<id>` and `POST /clear` are served locally; every other
+path is forwarded.
 
     python3 proxy.py --port 9000
     python3 proxy.py --upstream https://chatgpt.com/backend-api/codex   # for Codex
@@ -27,9 +28,11 @@ import hashlib
 import http.client
 import json
 import queue
+import re
 import sys
 import threading
 import time
+from collections import OrderedDict
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -47,6 +50,8 @@ UPSTREAM = "https://api.anthropic.com"
 
 # How many past message lists to remember for turn deduplication.
 MAX_SNAPSHOTS = 300
+# How many calls keep their raw request/response for the Raw view.
+MAX_RAW = 200
 
 
 def stamp() -> str:
@@ -64,6 +69,36 @@ def strip_cache(x: object) -> object:
     if isinstance(x, list):
         return [strip_cache(v) for v in x]
     return x
+
+
+def redact(headers: object) -> list[tuple[str, str]]:
+    """Header pairs with secrets shortened exactly as in the terminal log."""
+    out = []
+    for name, value in headers.items() if hasattr(headers, "items") else headers:
+        if name.lower() in ("authorization", "x-api-key"):
+            value = value[:16] + "..."
+        out.append((name, value))
+    return out
+
+
+def body_text(body: bytes) -> str:
+    """A body for the Raw view: pretty JSON when it parses, plain text otherwise."""
+    if not body:
+        return ""
+    try:
+        return json.dumps(json.loads(body), indent=2, ensure_ascii=False)
+    except ValueError:
+        return body.decode("utf-8", "replace")
+
+
+def system_label(system: object) -> str:
+    """First non-empty line of a system prompt, used to label harness calls."""
+    if isinstance(system, list):
+        system = "\n".join(b.get("text", "") for b in system if isinstance(b, dict))
+    for line in str(system or "").splitlines():
+        if line.strip():
+            return line.strip()[:160]
+    return "(no system prompt)"
 
 
 def digest(x: object) -> str:
@@ -150,7 +185,7 @@ def parse_sse(raw: bytes) -> dict:
 
 
 class Traffic:
-    """In-memory history of decoded turns, fanned out to SSE subscribers."""
+    """In-memory history of every proxied call, fanned out to SSE subscribers."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -164,6 +199,7 @@ class Traffic:
         self.system: object = None  # latest values, re-sent after a Clear
         self.tools: object = None
         self.in_flight: dict[int, dict] = {}  # request id -> request event
+        self.raw: OrderedDict[int, dict] = OrderedDict()  # request id -> raw request/response
 
     def broadcast(self, event: dict) -> None:
         """Store and fan out one event. Caller holds the lock."""
@@ -183,10 +219,13 @@ class Traffic:
         """Drop the replay history but keep the dedup snapshots, counters and system/tools."""
         with self.lock:
             self.history = []
+            for rid in [rid for rid in self.raw if rid not in self.in_flight]:
+                del self.raw[rid]
             self.broadcast({"type": "cleared", "time": stamp(), "system": self.system, "tools": self.tools})
             for ev in self.in_flight.values():
                 # Keep the waiting indicator; the messages were already shown before the Clear.
-                stub = {k: ev[k] for k in ("type", "id", "time", "model", "side", "conv") if k in ev}
+                keep = ("type", "id", "time", "model", "kind", "conv", "label", "method", "path", "req_bytes")
+                stub = {k: ev[k] for k in keep if k in ev}
                 self.broadcast(dict(stub, blocks=[], in_flight=True))
 
     def subscribe(self) -> tuple[queue.Queue, list[dict]]:
@@ -199,6 +238,10 @@ class Traffic:
         with self.lock:
             if q in self.clients:
                 self.clients.remove(q)
+
+    def get_raw(self, rid: int) -> dict | None:
+        with self.lock:
+            return self.raw.get(rid)
 
     def match(self, fps: list) -> tuple[int | None, int]:
         """Find the conversation this message list continues, and where its new part starts."""
@@ -217,21 +260,37 @@ class Traffic:
                     best_conv, best_len = conv, n
         return best_conv, best_len
 
-    def on_request(self, body: bytes) -> dict:
-        data = json.loads(body)
-        messages = data.get("messages") or []
-        fps = [fingerprint(m) for m in messages if isinstance(m, dict)]
-        side = not data.get("tools")
+    def on_request(self, method: str, path: str, headers: list[tuple[str, str]], body: bytes) -> dict:
+        route = urlsplit(path).path.rstrip("/")
+        data = None
+        if method == "POST" and route in ("/v1/messages", "/v1/messages/count_tokens"):
+            try:
+                data = json.loads(body)
+            except ValueError:
+                pass
+        if not isinstance(data, dict):
+            kind = "http"
+        elif route == "/v1/messages/count_tokens":
+            kind = "count"
+        else:
+            kind = "main" if data.get("tools") else "aux"
+        messages = (data or {}).get("messages") or []
+        fps = [fingerprint(m) for m in messages if isinstance(m, dict)] if kind == "main" else []
         with self.lock:
             self.requests += 1
-            ev: dict = {
-                "type": "request", "id": self.requests, "time": stamp(),
-                "model": data.get("model"), "side": side, "total": len(messages),
-            }
+            rid = self.requests
+            self.raw[rid] = {"request": {"method": method, "path": path, "headers": headers, "body": body_text(body)}}
+            while len(self.raw) > MAX_RAW:
+                self.raw.popitem(last=False)
+            ev: dict = {"type": "request", "id": rid, "time": stamp(), "kind": kind,
+                        "method": method, "path": path, "req_bytes": len(body)}
             conv = None
-            if side:
-                ev["blocks"] = strip_cache(messages[-1:])
-            else:
+            if data is not None:
+                ev.update(model=data.get("model"), total=len(messages))
+            if kind == "aux":
+                system = strip_cache(data.get("system"))
+                ev.update(label=system_label(system), system=system, messages=strip_cache(messages))
+            elif kind == "main":
                 conv, start = self.match(fps)
                 if conv is None:
                     self.conversations += 1
@@ -254,16 +313,28 @@ class Traffic:
                     ev["tools_changed"] = self.tools_hash is not None
                     self.tools_hash = h
         self.publish(ev)
-        return {"id": ev["id"], "conv": conv, "fps": fps, "side": side, "t0": time.monotonic()}
+        return {"id": rid, "kind": kind, "conv": conv, "fps": fps, "t0": time.monotonic()}
 
-    def on_response(self, ctx: dict, status: int, ctype: str, raw: bytes) -> None:
+    def store_raw_response(self, rid: int, response: dict) -> None:
+        with self.lock:
+            if rid in self.raw:
+                self.raw[rid]["response"] = response
+
+    def on_response(self, ctx: dict, status: int, reason: str, headers: list[tuple[str, str]], raw: bytes) -> None:
+        self.store_raw_response(ctx["id"], {"status": status, "reason": reason, "headers": headers, "body": body_text(raw)})
+        ctype = next((v for k, v in headers if k.lower() == "content-type"), "")
         ev: dict = {
-            "type": "response", "id": ctx["id"], "status": status,
+            "type": "response", "id": ctx["id"], "status": status, "resp_bytes": len(raw),
             "ms": int((time.monotonic() - ctx["t0"]) * 1000),
         }
         if status >= 400:
             ev["error"] = raw.decode("utf-8", "replace")[:4000]
-        else:
+        elif ctx["kind"] == "count":
+            try:
+                ev["input_tokens"] = json.loads(raw).get("input_tokens")
+            except (ValueError, AttributeError):
+                ev["error"] = "proxy: could not decode the response body"
+        elif ctx["kind"] in ("main", "aux"):
             try:
                 msg = parse_sse(raw) if "event-stream" in ctype else json.loads(raw or b"{}")
             except ValueError:
@@ -274,7 +345,7 @@ class Traffic:
             )
             if msg.get("error"):
                 ev["error"] = json.dumps(msg["error"])
-            elif not ctx["side"] and ev["content"]:
+            elif ctx["kind"] == "main" and ev["content"]:
                 fp = fingerprint({"role": "assistant", "content": ev["content"]})
                 with self.lock:
                     self.snapshots.append((ctx["conv"], ctx["fps"] + [fp]))
@@ -282,6 +353,7 @@ class Traffic:
         self.publish(ev)
 
     def on_failure(self, ctx: dict, error: str) -> None:
+        self.store_raw_response(ctx["id"], {"status": 502, "reason": "Bad Gateway", "headers": [], "body": error})
         self.publish({"type": "response", "id": ctx["id"], "status": 502, "error": error,
                       "ms": int((time.monotonic() - ctx["t0"]) * 1000)})
 
@@ -316,6 +388,8 @@ class Tap(BaseHTTPRequestHandler):
             self.serve_dashboard()
         elif path == "/events":
             self.serve_events()
+        elif re.fullmatch(r"/raw/\d+", path):
+            self.serve_raw(int(path.rsplit("/", 1)[1]))
         else:
             self.relay()
 
@@ -330,6 +404,16 @@ class Tap(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(page)
+
+    def serve_raw(self, rid: int) -> None:
+        raw = TRAFFIC.get_raw(rid)
+        data = json.dumps(raw if raw else {"expired": True}).encode()
+        self.send_response(200 if raw else 404)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def serve_clear(self) -> None:
         length = int(self.headers.get("content-length") or 0)
@@ -374,9 +458,7 @@ class Tap(BaseHTTPRequestHandler):
 
         # 1. Print what the agent sent.
         print(f"\n{'=' * 78}\n[{stamp()}] >>> {self.command} {self.path}", flush=True)
-        for name, value in self.headers.items():
-            if name.lower() in ("authorization", "x-api-key"):
-                value = value[:16] + "..."
+        for name, value in redact(self.headers):
             print(f"    {name}: {value}")
         if body:
             try:
@@ -384,10 +466,8 @@ class Tap(BaseHTTPRequestHandler):
             except ValueError:
                 print(body.decode("utf-8", "replace"))
 
-        # Hand Messages API calls to the dashboard (count_tokens etc. are skipped).
-        ctx = None
-        if self.command == "POST" and urlsplit(self.path).path.rstrip("/") == "/v1/messages" and body:
-            ctx = dashboard_hook(TRAFFIC.on_request, body)
+        # Hand every call to the dashboard.
+        ctx = dashboard_hook(TRAFFIC.on_request, self.command, self.path, redact(self.headers), body)
 
         # 2. Forward it, headers intact.
         target = urlsplit(UPSTREAM)
@@ -423,21 +503,22 @@ class Tap(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         if self.command == "HEAD":
+            if ctx:
+                dashboard_hook(TRAFFIC.on_response, ctx, reply.status, reply.reason, reply.getheaders(), b"")
             self.close_connection = True
             return
         captured = bytearray()
         try:
             while chunk := reply.read1(4096):  # read1: pass on each chunk as it lands, don't wait for 4096 bytes
-                if ctx:
-                    captured += chunk
+                captured += chunk
                 self.wfile.write(chunk)
                 self.wfile.flush()
                 sys.stdout.write(chunk.decode("utf-8", "replace"))
                 sys.stdout.flush()
         finally:
             if ctx:
-                dashboard_hook(TRAFFIC.on_response, ctx, reply.status,
-                               reply.getheader("content-type", ""), bytes(captured))
+                dashboard_hook(TRAFFIC.on_response, ctx, reply.status, reply.reason,
+                               reply.getheaders(), bytes(captured))
         self.close_connection = True
         print(f"\n[{stamp()}] --- done", flush=True)
 
@@ -452,14 +533,14 @@ DASHBOARD_HTML = r"""<!doctype html>
 :root {
   --bg: #f6f7f9; --card: #ffffff; --fg: #1d2430; --muted: #6b7380; --line: #e2e5ea;
   --code: #f1f3f6; --pill: #e9ebef;
-  --user: #2f6fed; --model: #17a34a; --tool: #e8710a; --result: #0d9488; --error: #dc2626;
+  --user: #2f6fed; --model: #17a34a; --tool: #e8710a; --result: #0d9488; --error: #dc2626; --harness: #7c3aed;
   --shadow: 0 1px 2px rgba(0,0,0,.06);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #111418; --card: #1a1e24; --fg: #e3e7ed; --muted: #8b94a1; --line: #2a3039;
     --code: #232931; --pill: #2a3039;
-    --user: #5b8ff5; --model: #34c46a; --tool: #f59338; --result: #2dbfb1; --error: #f05252;
+    --user: #5b8ff5; --model: #34c46a; --tool: #f59338; --result: #2dbfb1; --error: #f05252; --harness: #a78bfa;
     --shadow: none;
   }
 }
@@ -485,7 +566,8 @@ button { font: inherit; cursor: pointer; border: 1px solid var(--line); backgrou
 #drawer summary { padding: 4px 8px; cursor: pointer; }
 #drawer summary .desc { color: var(--muted); }
 #drawer pre { margin: 0; padding: 8px; white-space: pre-wrap; word-break: break-word; border-top: 1px solid var(--line); }
-main { max-width: 960px; margin: 0 auto; padding: 12px 16px 120px; }
+main { max-width: 960px; margin: 0 auto; padding: 12px 16px 24px; }
+footer { max-width: 960px; margin: 0 auto; padding: 0 16px 100px; color: var(--muted); font-size: 12px; text-align: center; }
 .empty { color: var(--muted); text-align: center; margin-top: 60px; }
 .divider { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin: 18px 0 8px; }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
@@ -556,18 +638,37 @@ details.reminder[open] > div { white-space: pre-wrap; word-break: break-word; co
 .pairbadge { display: flex; gap: 8px; align-items: center; margin: 4px 0 4px 18px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .pairbadge .badge { background: var(--result); }
 .pairbadge.err .badge { background: var(--error); }
-.side { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); margin: 6px 0; padding: 3px 10px;
-  border: 1px dashed var(--line); border-radius: 6px; cursor: pointer; overflow: hidden; }
-.side .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.side-full { display: none; font-size: 12.5px; margin: -2px 0 8px; padding: 6px 10px; border: 1px dashed var(--line);
-  border-top: none; border-radius: 0 0 6px 6px; white-space: pre-wrap; word-break: break-word; color: var(--muted); }
-.side.open + .side-full { display: block; }
+.card.harness { border-left-color: var(--harness); }
+.harness .badge { background: var(--harness); }
+.card.harness.err { border-left-color: var(--error); }
+.card.harness.err > .head .badge { background: var(--error); }
+.harness .head .arg { color: var(--fg); }
+.harness .st { display: flex; align-items: center; gap: 6px; }
+.hprompt { margin-bottom: 6px; }
+.hreply:empty { display: none; }
+.hmodel { border-left: 3px solid var(--model); padding: 2px 0 2px 10px; margin: 6px 0; }
+.hmodel .mbadge { background: var(--model); display: inline-block; margin-bottom: 4px; }
+.herr { color: var(--error); white-space: pre-wrap; word-break: break-word; margin: 6px 0; }
+details.fold, details.raw { margin: 4px 0; }
+details.fold > summary, details.raw > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+details.fold > pre, .rawbody pre { background: var(--code); padding: 8px; border-radius: 6px; max-height: 420px; overflow: auto;
+  white-space: pre-wrap; word-break: break-word; margin: 4px 0; }
+.rawbody h4 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.rawline { margin: -6px 0 2px; }
+.rawline details.raw > summary { text-align: right; }
+.hrow { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 6px;
+  margin: 6px 0; padding: 3px 10px; font-size: 12px; color: var(--muted); }
+.hrow .line { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.hrow .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hrow.err { border-left-color: var(--error); }
+.hrow.err .chip.hk { background: var(--error); color: #fff; }
 .waiting { display: flex; gap: 10px; align-items: center; color: var(--muted); padding: 8px 12px; margin: 8px 0;
   border: 1px dashed var(--model); border-radius: 8px; }
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--model); animation: pulse 1s infinite alternate; }
 @keyframes pulse { from { opacity: .25; } to { opacity: 1; } }
 body.no-thinking .thinking { display: none; }
-body.no-system details.reminder, body.no-system .side, body.no-system .side-full, body.no-system .card.user.quiet { display: none !important; }
+body.no-system details.reminder, body.no-system .card.user.quiet { display: none !important; }
+body.no-harness .harness { display: none !important; }
 .hidden { display: none !important; }
 #jump { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; z-index: 20;
   background: var(--user); color: #fff; border: none; padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
@@ -583,12 +684,14 @@ body.no-system details.reminder, body.no-system .side, body.no-system .side-full
     <label><input type="checkbox" id="f-system" checked> System</label>
     <label><input type="checkbox" id="f-thinking" checked> Thinking</label>
     <label><input type="checkbox" id="f-details"> Tool Details</label>
+    <label><input type="checkbox" id="f-harness" checked> Harness</label>
     <button id="clearbtn" title="Clear the view (the proxy keeps tracking the conversation)">Clear</button>
     <input type="search" id="q" placeholder="Filter cards…">
   </div>
   <div id="drawer"></div>
 </header>
 <main id="stream"><p class="empty" id="empty">Waiting for traffic… run <code>ANTHROPIC_BASE_URL=http://localhost:PORT claude</code></p></main>
+<footer>Shows every call sent to <code>ANTHROPIC_BASE_URL</code>. Calls Claude Code makes to other hosts (for example telemetry) don't pass through this proxy and aren't shown.</footer>
 <button id="jump">Jump to Live ↓</button>
 <script>
 "use strict";
@@ -596,9 +699,9 @@ const $ = (s) => document.querySelector(s);
 const stream = $("#stream"), drawer = $("#drawer"), jump = $("#jump");
 $("#empty").querySelector("code").textContent = "ANTHROPIC_BASE_URL=" + location.origin + " claude";
 
-let toolCards, pending, sideRows, sys, unseen;
+let toolCards, pending, harness, sys, unseen;
 function resetState() {
-  toolCards = new Map(); pending = new Map(); sideRows = new Map();
+  toolCards = new Map(); pending = new Map(); harness = new Map();
   sys = { system: null, tools: null, changed: false };
   unseen = 0;
 }
@@ -720,12 +823,13 @@ function bindToggle(id, cls, invert) {
 bindToggle("#f-system", "no-system", true);
 bindToggle("#f-thinking", "no-thinking", true);
 bindToggle("#f-details", "details", false);
+bindToggle("#f-harness", "no-harness", true);
 const q = $("#q");
 function applyFilter(node) {
   const term = q.value.trim().toLowerCase();
   const targets = node ? [node] : stream.children;
   for (const n of targets) {
-    if (n.classList.contains("divider") || n.classList.contains("waiting")) continue;
+    if (n.classList.contains("divider") || n.classList.contains("waiting") || n.classList.contains("rawline")) continue;
     const hay = ((n.dataset.search || "") + " " + n.textContent).toLowerCase();
     n.classList.toggle("hidden", !!term && !hay.includes(term));
   }
@@ -886,19 +990,114 @@ function renderMessage(msg, meta) {
   }
 }
 
-// ---------- events ----------
-function onRequest(ev) {
-  if (ev.side) {
-    const last = ev.blocks && ev.blocks[0];
-    const row = el("div", "side", '<span class="chip">SIDE</span><span class="mono">#' + ev.id + "</span><span>" + esc(ev.model || "") +
-      '</span><span class="t">' + esc(short(last ? textOf(last.content).replace(REMINDER, "").replace(/\s+/g, " ").trim() : "", 200)) +
-      '</span><span class="meta st">waiting…</span>');
-    const full = el("div", "side-full");
-    row.onclick = () => row.classList.toggle("open");
-    add(row); add(full);
-    sideRows.set(ev.id, { row, full, prompt: last ? textOf(last.content) : "" });
+// ---------- raw view ----------
+function fmtHeaders(h) { return (h || []).map(([k, v]) => k + ": " + v).join("\n"); }
+function fmtBytes(n) { return n == null ? "" : n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB"; }
+async function loadRaw(id, box) {
+  box.textContent = "loading…";
+  try {
+    const r = await fetch("/raw/" + id);
+    if (!r.ok) { box.innerHTML = '<span class="chip">raw body expired</span>'; return; }
+    const raw = await r.json(), rq = raw.request, rs = raw.response;
+    let h = "<h4>Request</h4><pre>" + esc(rq.method + " " + rq.path + "\n" + fmtHeaders(rq.headers)) + "</pre>";
+    if (rq.body) h += "<pre>" + esc(rq.body) + "</pre>";
+    h += "<h4>Response</h4>";
+    if (rs) {
+      h += "<pre>" + esc(rs.status + " " + (rs.reason || "") + "\n" + fmtHeaders(rs.headers)) + "</pre>";
+      if (rs.body) h += "<pre>" + esc(rs.body) + "</pre>";
+    } else h += '<span class="chip">in flight…</span>';
+    box.innerHTML = h;
+  } catch (e) { box.textContent = "could not load: " + e; }
+}
+function rawBox(id, label) {
+  const d = el("details", "raw", "<summary>" + esc(label || "Raw") + '</summary><div class="rawbody"></div>');
+  d.addEventListener("toggle", () => { if (d.open) loadRaw(id, d.querySelector(".rawbody")); });
+  return d;
+}
+function fold(label, text) {
+  return el("details", "fold", "<summary>" + esc(label) + "</summary><pre>" + withReminders(text) + "</pre>");
+}
+function systemText(system) {
+  return typeof system === "string" ? system : blocksOf(system).map((b) => b.text || "").join("\n\n");
+}
+function messageText(m) {
+  return blocksOf(m.content).map((b) =>
+    b.type === "text" ? b.text || "" :
+    b.type === "thinking" ? "[thinking] " + (b.thinking || "") :
+    b.type === "tool_use" ? "[tool_use " + (b.name || "") + "] " + JSON.stringify(b.input) :
+    b.type === "tool_result" ? "[tool_result " + (b.tool_use_id || "") + "] " + textOf(b.content) :
+    "[" + (b.type || "block") + "]").join("\n");
+}
+function modelBlocks(content) {
+  const box = el("div", "hmodel", '<span class="badge mbadge">MODEL</span>');
+  for (const b of content || []) {
+    if (b.type === "thinking" || b.type === "redacted_thinking") {
+      const t = b.thinking || "(redacted)";
+      box.insertAdjacentHTML("beforeend", '<details class="thinking"><summary>💭 ' + esc(short(t.replace(/\s+/g, " "), 160)) +
+        "</summary><div>" + esc(t) + "</div></details>");
+    } else if (b.type === "text") box.appendChild(el("div", "md", md(b.text || "")));
+    else box.appendChild(el("pre", "mono", esc("[" + b.type + (b.name ? " " + b.name : "") + "] " + JSON.stringify(b.input ?? ""))));
+  }
+  return box;
+}
+
+// ---------- harness calls ----------
+function onHarnessRequest(ev) {
+  if (ev.kind === "aux") {
+    const c = el("div", "card harness");
+    c.appendChild(el("div", "head", '<span class="badge">HARNESS</span><span class="name mono">#' + ev.id + '</span><span class="arg" title="' +
+      esc(ev.label || "") + '">' + esc(ev.label || "") + '</span><span class="meta st"><span class="pulse"></span> ' + esc(ev.model || "") + " · waiting…</span>"));
+    const b = el("div", "body");
+    const msgs = ev.messages || [];
+    const last = [...msgs].reverse().find((m) => m.role === "user");
+    if (last) b.appendChild(el("div", "usertext hprompt", withReminders(messageText(last))));
+    else if (ev.in_flight) b.appendChild(el("span", "chip", "in flight at Clear"));
+    const reply = el("div", "hreply");
+    b.appendChild(reply);
+    if (ev.system != null) b.appendChild(fold("System prompt", systemText(ev.system)));
+    if (msgs.length) b.appendChild(fold("All " + msgs.length + " message" + (msgs.length === 1 ? "" : "s"),
+      msgs.map((m) => "── " + m.role + " ──\n" + messageText(m)).join("\n\n")));
+    b.appendChild(rawBox(ev.id));
+    c.appendChild(b);
+    add(c);
+    harness.set(ev.id, { kind: "aux", node: c, reply });
     return;
   }
+  const r = el("div", "hrow harness");
+  const what = ev.kind === "count"
+    ? '<span class="chip hk">COUNT</span><span class="mono">#' + ev.id + "</span><span>" + esc(ev.model || "") + '</span><span class="t">' +
+      (ev.in_flight ? "in flight at Clear" : (ev.total || 0) + " message" + (ev.total === 1 ? "" : "s")) + "</span>"
+    : '<span class="chip hk">HTTP</span><span class="mono">#' + ev.id + '</span><span class="t mono" title="' + esc(ev.path) + '">' +
+      esc(ev.method + " " + ev.path) + "</span>";
+  r.appendChild(el("div", "line", what + '<span class="meta st">…</span>'));
+  r.appendChild(rawBox(ev.id));
+  add(r);
+  harness.set(ev.id, { kind: ev.kind, node: r, req_bytes: ev.req_bytes });
+}
+
+function onHarnessResponse(h, ev) {
+  const st = h.node.querySelector(".st");
+  if (ev.error || ev.status >= 400) h.node.classList.add("err");
+  if (h.kind === "aux") {
+    const u = ev.usage || {};
+    const inTok = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+    st.textContent = [ev.model || "", fmtMs(ev.ms), inTok ? inTok.toLocaleString() + " in" : "",
+      u.output_tokens ? u.output_tokens.toLocaleString() + " out" : "", ev.stop_reason || ""].filter(Boolean).join(" · ");
+    if (ev.error) h.reply.appendChild(el("pre", "herr", esc("ERROR " + ev.status + ": " + ev.error)));
+    else h.reply.appendChild(modelBlocks(ev.content));
+  } else if (h.kind === "count") {
+    st.textContent = ev.error ? "error " + ev.status + " · " + fmtMs(ev.ms)
+      : "→ " + (ev.input_tokens ?? "?").toLocaleString() + " tokens · " + fmtMs(ev.ms);
+    if (ev.error) h.node.title = ev.error;
+  } else {
+    st.textContent = ev.status + " · " + fmtMs(ev.ms) + " · ↑" + fmtBytes(h.req_bytes) + " ↓" + fmtBytes(ev.resp_bytes);
+    if (ev.error) h.node.title = ev.error;
+  }
+}
+
+// ---------- events ----------
+function onRequest(ev) {
+  if (ev.kind !== "main") { onHarnessRequest(ev); return; }
   if (ev.new_conv) add(el("div", "divider conv", "<span>New Conversation · #" + ev.conv + "</span>"));
   const chips = [];
   if ("system" in ev) { sys.system = ev.system; if (ev.system_changed) { sys.changed = true; chips.push("system changed"); } }
@@ -910,6 +1109,9 @@ function onRequest(ev) {
     chips.map((c) => '<span class="chip warn">' + c + "</span>").join(""));
   d.querySelectorAll(".chip").forEach((c) => c.onclick = () => { drawer.classList.add("open"); sys.changed = false; updateSysBtn(); });
   add(d);
+  const rl = el("div", "rawline");
+  rl.appendChild(rawBox(ev.id, "Raw #" + ev.id));
+  add(rl);
   for (const m of ev.blocks || []) renderMessage(m, null);
   const w = el("div", "waiting", '<span class="pulse"></span><span>Waiting for Claude… <span class="el">0.0s</span></span>');
   w.dataset.t0 = Date.now();
@@ -918,15 +1120,10 @@ function onRequest(ev) {
 }
 
 function onResponse(ev) {
+  const h = harness.get(ev.id);
+  if (h) { onHarnessResponse(h, ev); return; }
   const w = pending.get(ev.id);
   if (w) { w.remove(); pending.delete(ev.id); }
-  const side = sideRows.get(ev.id);
-  if (side) {
-    const reply = ev.error ? "ERROR " + ev.status + ": " + ev.error : textOf(ev.content);
-    side.row.querySelector(".st").textContent = (ev.error ? "error · " : "") + fmtMs(ev.ms);
-    side.full.textContent = "PROMPT:\n" + side.prompt.replace(REMINDER, "").trim() + "\n\nREPLY:\n" + reply;
-    return;
-  }
   if (ev.error) {
     const c = el("div", "card err");
     c.appendChild(el("div", "head", '<span class="badge">API ERROR ' + ev.status + '</span><span class="meta">' + fmtMs(ev.ms) + "</span>"));

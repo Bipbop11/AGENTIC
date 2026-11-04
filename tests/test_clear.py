@@ -41,8 +41,11 @@ def replay():
 def user(text):
     return {"role": "user", "content": text}
 
+# Start from an empty view so other tests' traffic doesn't count.
+post("/clear")
+
 # A conversation with a tool call, before the Clear.
-m = [user("read /tmp/a.txt")]
+m = [user(f"read /tmp/a.txt (run {time.time()})")]  # unique per run, so reruns start a new conversation
 ask(m)
 m += [{"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_1", "name": "Read", "input": {"file_path": "/tmp/a.txt"}}]},
       {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "hello"}]}]
@@ -76,5 +79,5 @@ assert len(reqs) == 1, reqs
 r = reqs[0]
 assert not r.get("new_conv"), "same conversation, no divider"
 assert r["start"] == 4 and r["blocks"] == [user("now summarise it")], r
-assert r["id"] == 4, "request counter kept counting"
+assert r["id"] == stub["id"] + 1, "request counter kept counting"
 print("OK: clear keeps dedup state, counters, system/tools and in-flight replies")

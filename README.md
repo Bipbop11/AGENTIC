@@ -1,6 +1,6 @@
 # AGENTIC: Agent-Traffic Proxy with a Live Dashboard
 
-`proxy.py` sits between Claude Code and the Anthropic Messages API. It forwards every request unchanged, prints the raw traffic to the terminal, and serves a live browser dashboard that shows the conversation as readable cards.
+`proxy.py` sits between Claude Code and the Anthropic Messages API. It forwards every request unchanged, prints the raw traffic to the terminal, and serves a live browser dashboard that shows the conversation as readable cards, along with every other call the harness makes.
 
 It uses only the Python 3 standard library, so there's nothing to install.
 
@@ -36,10 +36,15 @@ Other features:
 
 - **Only new messages:** Claude Code re-sends the whole conversation on every request. The dashboard shows only what's new under a `Request #N` divider.
 - **New Conversation dividers:** these appear when the message list resets (after `/clear`, a restart, or a new subagent).
-- **Side requests:** tool-less calls such as title generation are shown as compact one-line rows.
+- **Harness calls:** every other call through the proxy appears in the same stream, numbered in call order:
+  - Auxiliary model calls (title generation, quota checks, compaction…) are purple **HARNESS** cards, labeled with the first line of their system prompt.
+  - `count_tokens` calls are **COUNT** rows.
+  - Any other endpoint is an **HTTP** row.
+  - Failed calls get a red border.
+- **Raw view:** every call has a **Raw** expander with the request headers (keys redacted), the full request body, and the raw response. The last 200 calls are kept.
 - **System & Tools drawer:** the system prompt and tool definitions are collapsed in the top bar and flagged when they change.
 - **Smart auto-scroll:** the page follows new messages while you're at the bottom. If you scroll up, a **Jump to Live** button appears.
-- **Filters:** toggle System, Thinking and Tool Details, or filter cards by text.
+- **Filters:** toggle System, Thinking, Tool Details and Harness, or filter cards by text.
 - **Clear:** empties the view in every open tab and the stored history. The proxy keeps tracking the conversation, so the next turn shows only messages sent after the Clear, with no New Conversation divider.
 - **Waiting indicator:** a "Waiting for Claude…" line with a timer shows while a request is in flight.
 - **Survives refresh:** history is kept in memory for the current run and replayed when the page reloads. Restarting the proxy clears it.
@@ -49,6 +54,7 @@ Other features:
 - `POST /v1/messages` (and any other path) is forwarded upstream with headers intact, and the reply is streamed back byte for byte.
 - `GET /` serves the dashboard page, which is embedded in `proxy.py`.
 - `GET /events` is a Server-Sent Events stream. It replays the session history, then sends each new request and completed response.
+- `GET /raw/<id>` returns a call's raw request and response for the Raw view (404 once it has expired).
 - `POST /clear` (the **Clear** button) drops the stored history but keeps the deduplication state, counters and latest system/tools. It is never forwarded upstream.
 - Streamed responses are put back together into complete text, thinking and `tool_use` blocks before they are sent to the browser.
 - A dashboard error can never break proxying. It only prints a line to stderr.
@@ -57,15 +63,16 @@ See [`spec.md`](spec.md) for the full design and the decisions behind it.
 
 ## Testing without an API key
 
-`tests/` contains a fake Messages API, a scripted client and a Clear check. The client sends a tool call and its result, a side request, and an API error. `test_clear.py` checks that Clear keeps tracking the conversation, including a request that is in flight during the Clear.
+`tests/` contains a fake Messages API, a scripted client and two checks. The client sends a tool call and its result, a side request, and an API error. `test_harness.py` checks that every kind of call appears, the Raw view and its redaction, the 200-call cap, and Clear. `test_clear.py` checks that Clear keeps tracking the conversation, including a request that is in flight during the Clear.
 
 ```bash
 python3 tests/fake_upstream.py 8942
 python3 proxy.py --port 8941 --upstream http://127.0.0.1:8942
 python3 tests/client.py        # then open http://localhost:8941
+python3 tests/test_harness.py  # prints OK or fails an assert
 python3 tests/test_clear.py    # prints OK or fails an assert
 ```
 
 ## Security note
 
-The proxy listens on `127.0.0.1` only. The terminal log truncates `authorization` and `x-api-key` headers, but request and response bodies are printed and shown in full. Don't expose the dashboard to other machines.
+The proxy listens on `127.0.0.1` only. The terminal log and the Raw view truncate `authorization` and `x-api-key` headers, but request and response bodies are printed and shown in full. Don't expose the dashboard to other machines.

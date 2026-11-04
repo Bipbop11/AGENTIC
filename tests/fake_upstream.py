@@ -3,7 +3,8 @@
 Streams SSE replies: a thinking block plus a Read tool call on the first turn,
 a Markdown text reply once a tool_result arrives (or for tool-less requests),
 a 529 error when the last message contains "fail", and a 2-second delay when
-it contains "slow".
+it contains "slow". It also answers /v1/messages/count_tokens, GET /v1/models
+(404 for other GET paths) and HEAD.
 
     python3 tests/fake_upstream.py 8942
     python3 proxy.py --port 8941 --upstream http://127.0.0.1:8942
@@ -18,8 +19,21 @@ def sse(events):
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     def log_message(self, *a): pass
+    def send_json(self, status, obj):
+        out = json.dumps(obj).encode()
+        self.send_response(status); self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(out))); self.end_headers(); self.wfile.write(out)
+    def do_GET(self):
+        if self.path.startswith("/v1/models"):
+            self.send_json(200, {"data": [{"id": "claude-opus-5-5"}]})
+        else:
+            self.send_json(404, {"type": "error", "error": {"type": "not_found_error", "message": "Not found"}})
+    def do_HEAD(self):
+        self.send_response(200); self.send_header("content-length", "0"); self.end_headers()
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["content-length"])))
+        if self.path.startswith("/v1/messages/count_tokens"):
+            self.send_json(200, {"input_tokens": 42}); return
         msgs = body["messages"]
         if "fail" in json.dumps(msgs[-1]):
             out = b'{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'

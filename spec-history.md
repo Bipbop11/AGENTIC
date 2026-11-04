@@ -7,7 +7,7 @@ This file traces how `SPEC.md` (stored in the repo as `spec.md`) for the Proxy T
 | v0 | 2026-11-03 | Initial spec with five Open Decisions | Lab handout | Given |
 | v1 | 2026-11-03 | Open Decisions locked into Decisions | User and agent review | Implemented, commit `9625b59` |
 | v2 | 2026-11-04 | **Clear** button and `POST /clear` | User feature request | Implemented, commit `95d395f` |
-| v3 | 2026-11-04 | All harness calls shown, plus a Raw view | User feature request | Spec only, not yet implemented |
+| v3 | 2026-11-04 | All harness calls shown, plus a Raw view | User feature request | Implemented |
 
 ---
 
@@ -68,7 +68,7 @@ It ended with five **Open Decisions** left for the team to settle:
 - **Code:** commit `95d395f`.
 - **New test:** `tests/test_clear.py` covers dedup after Clear, the counters, kept `system`/`tools`, and a request in flight during the Clear. It passes.
 
-## v3: All harness calls (spec only, not yet implemented)
+## v3: All harness calls (implemented)
 
 **User request:** "change the spec such that the dashboard will include all the harness calls to and from the model".
 
@@ -91,8 +91,13 @@ It ended with five **Open Decisions** left for the team to settle:
 
 **Reverses part of an earlier decision:** v1's "side requests as compact one-line rows" is replaced. Those calls are now shown in full.
 
+**Implementation and testing:**
+- **Code:** `proxy.py` records every relayed call with a kind (`main`, `aux`, `count` or `http`) under one counter. It keeps raw requests and responses in a 200-entry store, served by `GET /raw/<id>`.
+- **New test:** `tests/test_harness.py` covers each kind of call, the single counter, the Raw view (including secret redaction), the 200-call cap, and Clear dropping raw bodies. It passes, and so do the existing tests.
+- **Test fix:** `tests/test_clear.py` was made safe to rerun against the same proxy.
+
 ## Process notes
 
-- **Spec before code:** each change was made to the spec first and implemented only afterwards (v1 and v2). v3 is still at the spec stage.
+- **Spec before code:** each change was made to the spec first and implemented only afterwards (v1 and v2). v3 followed the same path: spec first (commit `77205be`), then the implementation.
 - **Decisions reviewed before implementation:** the user asked to review and lock the Open Decisions before any code was written. The agent recommended an option for each, and the user confirmed them.
 - **Recorded in the spec:** behaviour the agent added during implementation, such as the side-request rows in v1 and the Clear edge cases in v2, was written back into the spec so the spec stays the source of truth.
