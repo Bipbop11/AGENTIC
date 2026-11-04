@@ -34,8 +34,11 @@ python3 proxy.py --upstream https://chatgpt.com/backend-api/codex   # for Codex
 
 Other features:
 
-- **Only new messages:** Claude Code re-sends the whole conversation on every request. The dashboard shows only what's new under a `Request #N` divider.
-- **New Conversation dividers:** these appear when the message list resets (after `/clear`, a restart, or a new subagent).
+- **Newest first:** new request groups appear at the top. Inside a group, the model's reply sits under the `Request #N` header, above the messages that triggered it. If you scroll down to read, new traffic doesn't move what you're reading, and a **Jump to Latest ↑** button counts what arrived.
+- **Only new messages:** Claude Code re-sends the whole conversation on every request. Each `Request #N` group shows only what's new.
+- **New Conversation markers:** `▲ New Conversation · #N` appears when the message list resets (after `/clear`, a restart, or a new subagent), just below that conversation's first group.
+- **Expand and collapse:** every card and every request group has a ▸/▾ toggle (click the header or press Enter/Space). **Expand all** and **Collapse all** act on everything in view. Tool cards start collapsed, and **Tool Details** opens or closes them all.
+- **Sessions sidebar:** lists the conversations of the current run. Pick one to see only its messages; the choice is kept in the address (`#conv=N`). Other conversations show a count of new requests.
 - **Harness calls:** every other call through the proxy appears in the same stream, numbered in call order:
   - Auxiliary model calls (title generation, quota checks, compaction…) are purple **HARNESS** cards, labeled with the first line of their system prompt.
   - `count_tokens` calls are **COUNT** rows.
@@ -43,7 +46,6 @@ Other features:
   - Failed calls get a red border.
 - **Raw view:** every call has a **Raw** expander with the request headers (keys redacted), the full request body, and the raw response. The last 200 calls are kept.
 - **System & Tools drawer:** the system prompt and tool definitions are collapsed in the top bar and flagged when they change.
-- **Smart auto-scroll:** the page follows new messages while you're at the bottom. If you scroll up, a **Jump to Live** button appears.
 - **Filters:** toggle System, Thinking, Tool Details and Harness, or filter cards by text.
 - **Clear:** empties the view in every open tab and the stored history. The proxy keeps tracking the conversation, so the next turn shows only messages sent after the Clear, with no New Conversation divider.
 - **Waiting indicator:** a "Waiting for Claude…" line with a timer shows while a request is in flight.

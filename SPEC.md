@@ -134,7 +134,7 @@ A **Sessions** sidebar lists the conversations of the current `proxy.py` run. A 
   - Clicking a **TOOL RESULT** badge always finds its paired card, because a tool call and its result are in the same conversation.
   - The **System & Tools** drawer keeps showing the latest `system` and `tools` from any conversation.
 - **After Clear:** The list is emptied together with the stream, and **All** is selected. When a conversation continues after the Clear, its entry comes back with the same `#N` (the counters are kept), marked `continued`. Its title then comes from the first user prompt shown after the Clear.
-- **Refresh:** The list is rebuilt from the replay. The selected conversation is kept in the page address (`#conv=N`), so a refresh or a shared link reopens the same conversation. If that conversation no longer exists, **All** is shown.
+- **Refresh:** The list is rebuilt from the replay. The selected conversation is kept in the page address (`#conv=N`), so a refresh or a shared link reopens the same conversation. Following a `#conv=N` link inside the open page selects it too. If that conversation no longer exists, **All** is shown.
 - **Browser-only change:** The conversation number (`conv`) and the **New Conversation** flag are already sent with every main-conversation request event (`kind: "main"`), and responses are matched to their conversation by request ID. The title comes from the messages the browser already has. `proxy.py` and the event format do not change.
 
 ## Clearing the View

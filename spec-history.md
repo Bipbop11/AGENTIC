@@ -8,7 +8,7 @@ This file traces how `SPEC.md` for the Proxy Traffic Dashboard changed, and why.
 | v1 | 2026-11-03 | Open Decisions locked into Decisions | User and agent review | Implemented, commit `9625b59` |
 | v2 | 2026-11-04 | **Clear** button and `POST /clear` | User feature request | Implemented, commit `95d395f` |
 | v3 | 2026-11-04 | All harness calls shown, plus a Raw view | User feature request (Bipbop11) | Implemented, commit `de44317` |
-| v4 | 2026-11-04 | Newest-first order, collapsible cards, **Sessions** sidebar | Partner's pull request #1 (Artureeez) | Spec only, merged into v3; not yet implemented |
+| v4 | 2026-11-04 | Newest-first order, collapsible cards, **Sessions** sidebar | Partner's pull request #1 (Artureeez) | Implemented |
 
 ---
 
@@ -97,7 +97,7 @@ It ended with five **Open Decisions** left for the team to settle:
 - **New test:** `tests/test_harness.py` covers each kind of call, the single counter, the Raw view (including secret redaction), the 200-call cap, and Clear dropping raw bodies. It passes, and so do the existing tests.
 - **Test fix:** `tests/test_clear.py` was made safe to rerun against the same proxy.
 
-## v4: Newest first, collapsible cards, Sessions sidebar (Artureeez, spec only)
+## v4: Newest first, collapsible cards, Sessions sidebar (Artureeez, implemented)
 
 **Author and route:** Artureeez wrote this change on the branch `spec-newest-first-collapsible` and opened it as pull request #1. It had two commits:
 - `2b2e2bf` (10:47): newest-first message order and expandable/collapsible cards.
@@ -153,11 +153,24 @@ Both versions changed the same parts of the spec, so the merge kept both sides a
   - The note on browser-only data now says `conv` is sent with every main-conversation request event (`kind: "main"`).
   - The Harness Calls section now says the shared stream is newest first instead of chronological.
 
-**Status:** merged into `main` as spec only. `proxy.py` still renders the stream oldest first, with no expand/collapse toggles on every card and no Sessions sidebar.
+**Status:** merged into `main` as spec only (merge commit `0731630`), then implemented.
+
+**Implementation and testing:**
+- **Code:** only the page embedded in `proxy.py` changed, as the spec says. The server and the event format are unchanged.
+  - Every top-level item is inserted at the top.
+  - Each request group holds a response slot above its messages.
+  - Manual scroll anchoring measures the element under the top of the viewport before each change and scrolls by how far it moved. The browser's own anchoring is turned off so the two don't fight.
+  - Cards are built by one helper that adds the chevron, the keyboard handling, `aria-expanded` and the collapsed one-line summary.
+  - The Sessions sidebar hides other conversations' items with a CSS class instead of removing them.
+- **Added during implementation:** following a `#conv=N` link inside the open page also selects that conversation (a `hashchange` handler). A fragment-only change doesn't reload the page, so without this only a refresh would apply it. The spec's Sessions section now says so.
+- **Testing:**
+  - Headless Chrome driven over the DevTools protocol ran 25 in-page checks against the fake upstream, and all passed. They cover newest-first order, marker placement, response-above-messages, sidebar order and titles, card and group toggles (mouse and keyboard), **Expand all**/**Collapse all**, **Tool Details**, the tool-result badge, conversation filtering with new-activity counts, scroll anchoring with **Jump to Latest**, the text filter, and **Expand all** leaving **Raw** closed.
+  - Separate checks covered `#conv=N` surviving a reload, a stale `#conv` falling back to **All**, and a conversation continuing after Clear (same number, marked `continued`, titled from the first prompt after the Clear, with the `▲ Cleared at` marker at the bottom).
+  - The existing Python tests still pass.
 
 ## Process notes
 
-- **Spec before code:** each change was made to the spec first and implemented only afterwards (v1 and v2). v3 followed the same path: spec first (commit `77205be`), then the implementation. v4 is still at the spec stage.
+- **Spec before code:** each change was made to the spec first and implemented only afterwards (v1 and v2). v3 followed the same path: spec first (commit `77205be`), then the implementation. v4 was then implemented the same way.
 - **Decisions reviewed before implementation:** the user asked to review and lock the Open Decisions before any code was written. The agent recommended an option for each, and the user confirmed them.
 - **Recorded in the spec:** behaviour the agent added during implementation, such as the side-request rows in v1 and the Clear edge cases in v2, was written back into the spec so the spec stays the source of truth.
 - **Two partners, one spec:** v4 was written in parallel on a branch and reviewed as a pull request. Merging it after v3 needed the conflicts resolved by hand. The merge kept both partners' features and rewrote the places where v4 still described the old side-request rows.

@@ -549,7 +549,7 @@ body { margin: 0; background: var(--bg); color: var(--fg);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
 header { position: sticky; top: 0; z-index: 10; background: var(--card); border-bottom: 1px solid var(--line); }
-.bar { max-width: 960px; margin: 0 auto; padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.bar { max-width: 1240px; margin: 0 auto; padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .bar h1 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error); }
 .dot.on { background: var(--model); }
@@ -559,21 +559,60 @@ header { position: sticky; top: 0; z-index: 10; background: var(--card); border-
 button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
   border-radius: 6px; padding: 4px 10px; }
 #sysbtn.changed { border-color: var(--tool); color: var(--tool); }
-#drawer { display: none; max-width: 960px; margin: 0 auto; padding: 0 16px 12px; max-height: 60vh; overflow: auto; }
+#drawer { display: none; max-width: 1240px; margin: 0 auto; padding: 0 16px 12px; max-height: 60vh; overflow: auto; }
 #drawer.open { display: block; }
 #drawer h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
 #drawer details { border: 1px solid var(--line); border-radius: 6px; margin: 4px 0; background: var(--bg); }
 #drawer summary { padding: 4px 8px; cursor: pointer; }
 #drawer summary .desc { color: var(--muted); }
 #drawer pre { margin: 0; padding: 8px; white-space: pre-wrap; word-break: break-word; border-top: 1px solid var(--line); }
-main { max-width: 960px; margin: 0 auto; padding: 12px 16px 24px; }
-footer { max-width: 960px; margin: 0 auto; padding: 0 16px 100px; color: var(--muted); font-size: 12px; text-align: center; }
+body { overflow-anchor: none; }
+#layout { max-width: 1240px; margin: 0 auto; padding: 0 16px; display: flex; gap: 16px; align-items: flex-start; }
+#col { flex: 1; min-width: 0; max-width: 960px; }
+main { padding: 12px 0 24px; }
+footer { padding: 0 0 100px; color: var(--muted); font-size: 12px; text-align: center; }
+#sessions { width: 250px; flex: none; position: sticky; top: var(--hh, 50px); max-height: calc(100vh - var(--hh, 50px));
+  overflow: auto; padding: 12px 0; }
+body.no-sessions #sessions { display: none; }
+.shead { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 6px 4px; }
+#slist { list-style: none; margin: 0; padding: 0; }
+.entry { padding: 6px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; margin-bottom: 2px; }
+.entry:hover { background: var(--card); }
+.entry.active { background: var(--card); border-color: var(--line); box-shadow: inset 3px 0 0 var(--user); }
+.etop { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.etitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.emeta { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+.sdot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); flex: none; }
+.entry.busy .sdot { background: var(--model); animation: pulse 1s infinite alternate; }
+.entry.err .sdot { background: var(--error); }
+.chip.new { background: var(--user); color: #fff; }
+@media (max-width: 800px) {
+  #sessions { display: none; position: fixed; left: 0; top: var(--hh, 50px); bottom: 0; max-height: none; width: min(320px, 85vw);
+    z-index: 30; background: var(--bg); border-right: 1px solid var(--line); padding: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+  body.sessions-open #sessions { display: block; }
+}
 .empty { color: var(--muted); text-align: center; margin-top: 60px; }
-.divider { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin: 18px 0 8px; }
-.divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
-.divider .chip { cursor: pointer; }
-.divider.conv { color: var(--fg); font-weight: 600; font-size: 13px; margin-top: 30px; }
-.divider.conv::before, .divider.conv::after { border-top: 2px solid var(--fg); opacity: .5; }
+.marker { display: flex; align-items: center; gap: 8px; color: var(--fg); font-weight: 600; font-size: 13px; margin: 14px 0 26px; }
+.marker::before, .marker::after { content: ""; flex: 1; border-top: 2px solid var(--fg); opacity: .5; }
+.ghead { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin: 18px 0 4px; cursor: pointer;
+  border-radius: 4px; }
+.ghead::after { content: ""; flex: 1; border-top: 1px solid var(--line); min-width: 20px; }
+.ghead .chip { cursor: pointer; }
+.ghead:focus-visible, .head:focus-visible { outline: 2px solid var(--user); outline-offset: 2px; }
+.gsum { color: var(--fg); }
+.group:not(.collapsed) .gsum { display: none; }
+.group.collapsed > .gbody, .group.collapsed > .rawline { display: none; }
+.chev { flex: none; width: 14px; color: var(--muted); font-size: 15px; line-height: 1; text-align: center; }
+.chev::before { content: "▾"; }
+.collapsed > .head > .chev::before, .group.collapsed > .ghead > .chev::before { content: "▸"; }
+.nomore > .head { cursor: default; }
+.nomore > .head > .chev { opacity: .3; }
+.sum { padding: 0 12px 8px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card:not(.collapsed) > .sum { display: none; }
+.card.collapsed > .body { display: none; }
+.card.result.collapsed > .body { display: block; }
+.rstat { font-size: 11.5px; color: var(--muted); flex: none; }
+.rstat.bad { color: var(--error); }
 .chip { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 9px; background: var(--pill); color: var(--muted); }
 .chip.warn { background: transparent; border: 1px solid var(--tool); color: var(--tool); }
 .card { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 8px;
@@ -585,8 +624,7 @@ footer { max-width: 960px; margin: 0 auto; padding: 0 16px 100px; color: var(--m
 .card.result.err, .card.err { border-left-color: var(--error); }
 .card.flash { animation: flash 1.2s; }
 @keyframes flash { 0% { box-shadow: 0 0 0 3px var(--tool); } 100% { box-shadow: 0 0 0 0 transparent; } }
-.head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; min-width: 0; }
-.tool > .head, .result > .head { cursor: pointer; }
+.head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; min-width: 0; cursor: pointer; }
 .badge { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; padding: 1px 7px; border-radius: 4px; color: #fff; flex: none; }
 .user .badge { background: var(--user); } .model .badge { background: var(--model); }
 .tool .badge { background: var(--tool); } .result .badge, .rslot .badge { background: var(--result); }
@@ -624,15 +662,15 @@ details.reminder[open] > div { white-space: pre-wrap; word-break: break-word; co
 .md a { color: var(--user); }
 .input { display: none; padding: 0 12px 10px; }
 .input pre { background: var(--code); padding: 8px; border-radius: 6px; }
-.card.tool.open .input, body.details .card.tool .input { display: block; }
+.card.tool:not(.collapsed) > .input { display: block; }
 .rslot { border-top: 1px solid var(--line); padding: 7px 12px 9px; }
 .rslot .rhead { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; cursor: pointer; }
 .rslot.pending { color: var(--muted); font-size: 12px; font-style: italic; }
 .out { background: var(--code); border-left: 3px solid var(--result); border-radius: 4px; padding: 6px 8px; }
 .err .out, .rslot.err .out { border-left-color: var(--error); }
 .out .full { display: none; }
-.out.open .full, body.details .out .full { display: block; }
-.out.open .preview, body.details .out .preview { display: none; }
+.card:not(.collapsed) .out .full { display: block; }
+.card:not(.collapsed) .out .preview, .card:not(.collapsed) .out .more { display: none; }
 .out .more { color: var(--muted); font-size: 11.5px; cursor: pointer; margin-top: 2px; }
 .out.long { cursor: pointer; }
 .pairbadge { display: flex; gap: 8px; align-items: center; margin: 4px 0 4px 18px; font-size: 12px; color: var(--muted); cursor: pointer; }
@@ -654,7 +692,7 @@ details.fold > summary, details.raw > summary { cursor: pointer; color: var(--mu
 details.fold > pre, .rawbody pre { background: var(--code); padding: 8px; border-radius: 6px; max-height: 420px; overflow: auto;
   white-space: pre-wrap; word-break: break-word; margin: 4px 0; }
 .rawbody h4 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-.rawline { margin: -6px 0 2px; }
+.rawline { margin: 0 0 2px; }
 .rawline details.raw > summary { text-align: right; }
 .hrow { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 6px;
   margin: 6px 0; padding: 3px 10px; font-size: 12px; color: var(--muted); }
@@ -669,8 +707,8 @@ details.fold > pre, .rawbody pre { background: var(--code); padding: 8px; border
 body.no-thinking .thinking { display: none; }
 body.no-system details.reminder, body.no-system .card.user.quiet { display: none !important; }
 body.no-harness .harness { display: none !important; }
-.hidden { display: none !important; }
-#jump { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; z-index: 20;
+.shide, .fhide { display: none !important; }
+#jump { position: fixed; top: calc(var(--hh, 50px) + 10px); left: 50%; transform: translateX(-50%); display: none; z-index: 20;
   background: var(--user); color: #fff; border: none; padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 #jump.show { display: block; }
 @media (max-width: 600px) { .meta { display: none; } }
@@ -680,28 +718,39 @@ body.no-harness .harness { display: none !important; }
 <header>
   <div class="bar">
     <h1><span class="dot" id="dot" title="disconnected"></span>Proxy Traffic</h1>
+    <button id="sessbtn" title="Show or hide the Sessions sidebar">Sessions</button>
     <button id="sysbtn" title="System prompt and tool definitions">System &amp; Tools</button>
     <label><input type="checkbox" id="f-system" checked> System</label>
     <label><input type="checkbox" id="f-thinking" checked> Thinking</label>
     <label><input type="checkbox" id="f-details"> Tool Details</label>
     <label><input type="checkbox" id="f-harness" checked> Harness</label>
+    <button id="expandall" title="Expand every card and request group in view">Expand all</button>
+    <button id="collapseall" title="Collapse every card and request group in view">Collapse all</button>
     <button id="clearbtn" title="Clear the view (the proxy keeps tracking the conversation)">Clear</button>
     <input type="search" id="q" placeholder="Filter cards…">
   </div>
   <div id="drawer"></div>
 </header>
-<main id="stream"><p class="empty" id="empty">Waiting for traffic… run <code>ANTHROPIC_BASE_URL=http://localhost:PORT claude</code></p></main>
-<footer>Shows every call sent to <code>ANTHROPIC_BASE_URL</code>. Calls Claude Code makes to other hosts (for example telemetry) don't pass through this proxy and aren't shown.</footer>
-<button id="jump">Jump to Live ↓</button>
+<div id="layout">
+  <aside id="sessions" aria-label="Sessions">
+    <div class="shead">Sessions</div>
+    <ul id="slist"></ul>
+  </aside>
+  <div id="col">
+    <main id="stream"><p class="empty" id="empty">Waiting for traffic… run <code>ANTHROPIC_BASE_URL=http://localhost:PORT claude</code></p></main>
+    <footer>Shows every call sent to <code>ANTHROPIC_BASE_URL</code>. Calls Claude Code makes to other hosts (for example telemetry) don't pass through this proxy and aren't shown.</footer>
+  </div>
+</div>
+<button id="jump">Jump to Latest ↑</button>
 <script>
 "use strict";
 const $ = (s) => document.querySelector(s);
 const stream = $("#stream"), drawer = $("#drawer"), jump = $("#jump");
 $("#empty").querySelector("code").textContent = "ANTHROPIC_BASE_URL=" + location.origin + " claude";
 
-let toolCards, pending, harness, sys, unseen;
+let toolCards, pending, harness, groups, sys, unseen;
 function resetState() {
-  toolCards = new Map(); pending = new Map(); harness = new Map();
+  toolCards = new Map(); pending = new Map(); harness = new Map(); groups = new Map();
   sys = { system: null, tools: null, changed: false };
   unseen = 0;
 }
@@ -796,56 +845,212 @@ function md(src) {
   return out.join("");
 }
 
-// ---------- scrolling ----------
-function atBottom() { return window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80; }
-function mutate(fn, force) {
-  const stick = force || atBottom();
-  fn();
-  if (stick) window.scrollTo(0, document.documentElement.scrollHeight);
-  else { unseen++; jump.textContent = "Jump to Live ↓ (" + unseen + " new)"; jump.classList.add("show"); }
+// ---------- layout & scrolling (newest first) ----------
+const header = $("header");
+function setHeaderVar() { document.documentElement.style.setProperty("--hh", header.offsetHeight + "px"); }
+new ResizeObserver(setHeaderVar).observe(header);
+setHeaderVar();
+function atTop() { return window.scrollY <= 80; }
+function isShown(n) { return n.isConnected && n.getClientRects().length > 0; }
+let added = [];  // nodes inserted by the current event, for the Jump to Latest count
+
+// The element under the top edge of the viewport, used to keep the reading position.
+function anchorEl() {
+  const r = stream.getBoundingClientRect(), x = r.left + r.width / 2;
+  for (let y = header.offsetHeight + 4; y < window.innerHeight; y += 12) {
+    const a = document.elementFromPoint(x, y);
+    if (a && a !== stream && stream.contains(a)) return a;
+  }
+  return null;
 }
-window.addEventListener("scroll", () => { if (atBottom()) { unseen = 0; jump.classList.remove("show"); } });
-jump.onclick = () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
-function add(node) {
+// Run fn without moving what the reader is looking at (scroll anchoring).
+function withAnchor(fn) {
+  if (atTop()) { fn(); return; }
+  const a = anchorEl(), before = a ? a.getBoundingClientRect().top : 0;
+  fn();
+  if (a && isShown(a)) window.scrollBy(0, a.getBoundingClientRect().top - before);
+}
+function mutate(fn, force) {
+  added = [];
+  const top = force || atTop();
+  if (top) fn(); else withAnchor(fn);
+  if (!top) {
+    const n = added.filter(isShown).length;
+    if (n) { unseen += n; jump.textContent = "Jump to Latest ↑ (" + unseen + " new)"; jump.classList.add("show"); }
+  }
+}
+function hideJump() { unseen = 0; jump.classList.remove("show"); }
+window.addEventListener("scroll", () => { if (atTop()) hideJump(); });
+jump.onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
+// Insert a top-level item (request group, harness call, marker) at the top of the stream.
+function addTop(node) {
   $("#empty")?.remove();
-  stream.appendChild(node);
-  applyFilter(node);
+  stream.prepend(node);
+  applySession(node);
+  added.push(node);
   return node;
 }
+function addInto(parent, node) { parent.appendChild(node); added.push(node); return node; }
+function flash(n) { n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }
 
 // ---------- filters ----------
 const body = document.body;
 function bindToggle(id, cls, invert) {
   const box = $(id);
-  const apply = () => body.classList.toggle(cls, invert ? !box.checked : box.checked);
+  const apply = () => withAnchor(() => body.classList.toggle(cls, invert ? !box.checked : box.checked));
   box.onchange = apply; apply();
 }
 bindToggle("#f-system", "no-system", true);
 bindToggle("#f-thinking", "no-thinking", true);
-bindToggle("#f-details", "details", false);
 bindToggle("#f-harness", "no-harness", true);
+const details = $("#f-details");
+// Tool Details sets the state of every tool card in view; new ones arrive in that state.
+details.onchange = () => withAnchor(() => {
+  for (const c of stream.querySelectorAll(".card.tool, .card.result")) if (!c.closest(".shide")) setCard(c, details.checked);
+});
 const q = $("#q");
-function applyFilter(node) {
+function applyFilter() {
   const term = q.value.trim().toLowerCase();
-  const targets = node ? [node] : stream.children;
-  for (const n of targets) {
-    if (n.classList.contains("divider") || n.classList.contains("waiting") || n.classList.contains("rawline")) continue;
+  for (const n of stream.querySelectorAll(".card, .hrow, .pairbadge")) {
     const hay = ((n.dataset.search || "") + " " + n.textContent).toLowerCase();
-    n.classList.toggle("hidden", !!term && !hay.includes(term));
+    n.classList.toggle("fhide", !!term && !hay.includes(term));
+  }
+  for (const g of stream.querySelectorAll(".group")) {
+    const hit = !term || g.querySelector(".ghead").textContent.toLowerCase().includes(term) ||
+      g.querySelector(".gbody .card:not(.fhide), .gbody .pairbadge:not(.fhide)");
+    g.classList.toggle("fhide", !hit);
   }
 }
-q.oninput = () => applyFilter();
+q.oninput = () => withAnchor(applyFilter);
 
-// ---------- system & tools drawer ----------
+// ---------- expand / collapse ----------
+function setCard(c, open) {
+  if (c.classList.contains("nomore")) open = true;
+  c.classList.toggle("collapsed", !open);
+  c.querySelector(":scope > .head")?.setAttribute("aria-expanded", String(open));
+}
+function setGroup(g, open) {
+  g.classList.toggle("collapsed", !open);
+  g.querySelector(".ghead").setAttribute("aria-expanded", String(open));
+  if (!open) g.querySelector(".gsum").textContent = groupSummary(g);
+}
+function groupSummary(g) {
+  const gb = g.querySelector(".gbody"), count = (sel) => gb.querySelectorAll(sel).length, parts = [];
+  const put = (n, one, many) => { if (n) parts.push(n === 1 ? one : n + " " + many); };
+  put(count(".card.user:not(.quiet)"), "USER", "USERS");
+  put(count(".card.model"), "MODEL", "MODELS");
+  put(count(".card.tool"), "TOOL CALL", "TOOL CALLS");
+  put(count(".card.result") + count(".pairbadge"), "TOOL RESULT", "TOOL RESULTS");
+  put(count(".card.apierr"), "API ERROR", "API ERRORS");
+  if (count(".waiting")) parts.push("waiting…");
+  return parts.join(" · ");
+}
+// Click (except on links, chips, details or while selecting) or Enter/Space toggles.
+function bindHead(h, toggle) {
+  h.tabIndex = 0;
+  h.setAttribute("role", "button");
+  h.onclick = (e) => {
+    if (e.target.closest("a, .chip, summary, details, button") || String(getSelection())) return;
+    withAnchor(toggle);
+  };
+  h.onkeydown = (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target === h) { e.preventDefault(); withAnchor(toggle); }
+  };
+}
+// A card with a chevron header. opts: sum (collapsed one-liner), open (default state), more (false: nothing to expand).
+function makeCard(cls, headHTML, opts) {
+  const c = el("div", "card " + cls + (opts.more === false ? " nomore" : ""));
+  const h = el("div", "head", '<span class="chev" aria-hidden="true"></span>' + headHTML);
+  c.appendChild(h);
+  if (opts.sum != null) c.appendChild(el("div", "sum", esc(opts.sum)));
+  bindHead(h, () => setCard(c, c.classList.contains("collapsed")));
+  setCard(c, opts.open !== false);
+  return c;
+}
+function setAll(open) {
+  withAnchor(() => {
+    for (const c of stream.querySelectorAll(".card")) if (!c.closest(".shide")) setCard(c, open);
+    for (const g of stream.querySelectorAll(".group:not(.shide)")) setGroup(g, open);
+  });
+}
+$("#expandall").onclick = () => setAll(true);
+$("#collapseall").onclick = () => setAll(false);
+
+// ---------- sessions sidebar ----------
+const slist = $("#slist");
+let convs, selected = null, wantConv = null;
+function resetSessions() {
+  convs = new Map(); selected = null;
+  slist.innerHTML = "";
+  const all = el("li", "entry all active", '<div class="etop"><b>All</b></div><div class="emeta">every conversation and harness call</div>');
+  all.onclick = () => select(null);
+  slist.appendChild(all);
+}
+function getConv(ev) {
+  let c = convs.get(ev.conv);
+  if (!c) {
+    c = { n: ev.conv, title: "", start: ev.time, last: ev.time, requests: 0, inflight: new Set(), err: false,
+          newCount: 0, continued: !ev.new_conv, el: el("li", "entry") };
+    c.el.dataset.conv = c.n;
+    c.el.onclick = () => select(c.n);
+    // Sorted by start, newest first; conversation numbers grow with start time.
+    const before = [...slist.children].find((li) => li.dataset.conv && +li.dataset.conv < c.n) || null;
+    slist.insertBefore(c.el, before);
+    convs.set(c.n, c);
+    if (wantConv === c.n) { wantConv = null; select(c.n, true); }
+  }
+  return c;
+}
+function renderEntry(c) {
+  c.el.className = "entry" + (selected === c.n ? " active" : "") + (c.inflight.size ? " busy" : "") + (c.err ? " err" : "");
+  c.el.innerHTML = '<div class="etop"><span class="sdot"></span><b>#' + c.n + '</b><span class="etitle">' +
+    esc(c.title || "(no prompt yet)") + "</span>" + (c.newCount ? '<span class="chip new">+' + c.newCount + "</span>" : "") + "</div>" +
+    '<div class="emeta">' + esc(c.start) + " · " + c.requests + " request" + (c.requests === 1 ? "" : "s") +
+    " · last " + esc(c.last) + (c.continued ? " · continued" : "") + "</div>";
+}
+function applySession(n) {
+  if (n.classList) n.classList.toggle("shide", selected != null && n.dataset.conv !== String(selected));
+}
+function select(conv, quiet) {
+  selected = conv;
+  if (conv != null && convs.get(conv)) convs.get(conv).newCount = 0;
+  slist.querySelector(".all").classList.toggle("active", conv == null);
+  for (const c of convs.values()) renderEntry(c);
+  for (const n of stream.children) applySession(n);
+  history.replaceState(null, "", conv == null ? location.pathname + location.search : "#conv=" + conv);
+  body.classList.remove("sessions-open");
+  if (!quiet) window.scrollTo(0, 0);
+  hideJump();
+}
+function titleFrom(blocks) {
+  for (const m of blocks || []) {
+    if (m.role !== "user") continue;
+    const t = textOf(m.content).replace(REMINDER, "").trim();
+    if (t) return short(t.split("\n")[0], 60);
+  }
+  return "";
+}
+// Following a #conv=N link inside the page selects that conversation too.
+window.addEventListener("hashchange", () => {
+  const m = location.hash.match(/conv=(\d+)/), n = m ? +m[1] : null;
+  if (n == null || convs.has(n)) select(n);
+});
+$("#sessbtn").onclick = () => {
+  if (matchMedia("(max-width: 800px)").matches) body.classList.toggle("sessions-open");
+  else body.classList.toggle("no-sessions");
+};
+
+// ---------- clear & system/tools drawer ----------
 $("#clearbtn").onclick = () => {
   fetch("/clear", { method: "POST" }).catch(() => {});
 };
 function onCleared(ev) {
-  resetState();
+  resetState(); resetSessions(); wantConv = null;
+  history.replaceState(null, "", location.pathname + location.search);
   sys.system = ev.system; sys.tools = ev.tools;
   stream.innerHTML = "";
-  jump.classList.remove("show");
-  add(el("div", "divider conv", "<span>Cleared at " + esc(ev.time) + "</span>"));
+  hideJump();
+  addTop(el("div", "marker cleared", "<span>▲ Cleared at " + esc(ev.time) + "</span>"));
   renderDrawer(); updateSysBtn();
 }
 $("#sysbtn").onclick = () => {
@@ -884,17 +1089,23 @@ function mainArg(input) {
   const v = Object.values(input).find((x) => typeof x === "string");
   return v || "";
 }
+function firstLine(text) { return String(text || "").replace(REMINDER, "").trim().split("\n")[0]; }
+const longText = (t) => t.includes("\n") || t.length > 120;
 
 function userCard(text) {
-  const c = el("div", "card user" + (onlyReminders(text) ? " quiet" : ""));
-  c.appendChild(el("div", "head", '<span class="badge">USER</span>'));
+  const clean = text.replace(REMINDER, "").trim(), quiet = onlyReminders(text);
+  const c = makeCard("user" + (quiet ? " quiet" : ""), '<span class="badge">USER</span>', {
+    sum: short(firstLine(text), 120) + " · " + clean.length.toLocaleString() + " chars",
+    open: true, more: !quiet && (longText(clean) || /<system-reminder>/.test(text)) });
   c.appendChild(el("div", "body", '<div class="usertext">' + withReminders(text) + "</div>"));
   return c;
 }
 
 function modelCard(blocks, meta) {
-  const c = el("div", "card model");
-  c.appendChild(el("div", "head", '<span class="badge">MODEL</span>' + (meta ? '<span class="meta">' + meta + "</span>" : "")));
+  const text = blocks.filter((b) => b.type === "text").map((b) => b.text || "").join("\n").trim();
+  const c = makeCard("model", '<span class="badge">MODEL</span>' + (meta ? '<span class="meta">' + meta + "</span>" : ""), {
+    sum: short(firstLine(text) || (blocks.length ? "(thinking only)" : ""), 160),
+    open: true, more: blocks.some((b) => b.type !== "text") || longText(text) });
   const b = el("div", "body");
   for (const blk of blocks) {
     if (blk.type === "thinking" || blk.type === "redacted_thinking") {
@@ -909,21 +1120,27 @@ function modelCard(blocks, meta) {
   return c;
 }
 
-function toolCard(blk, meta) {
-  const c = el("div", "card tool");
-  const arg = mainArg(blk.input);
-  c.appendChild(el("div", "head", '<span class="badge">TOOL CALL</span><span class="name mono">' + esc(blk.name || "?") +
-    '</span><span class="arg mono" title="' + esc(arg) + '">' + esc(short(arg, 300)) + "</span>" +
-    '<span class="meta">' + (meta ? meta + " · " : "") + esc(blk.id || "") + "</span>"));
-  c.querySelector(".head").onclick = () => c.classList.toggle("open");
-  c.appendChild(el("div", "input", "<pre>" + esc(typeof blk.input === "string" ? blk.input : JSON.stringify(blk.input, null, 2)) + "</pre>"));
-  const slot = el("div", "rslot pending", "awaiting result…");
-  c.appendChild(slot);
-  if (blk.id) toolCards.set(blk.id, { card: c, slot, name: blk.name });
+function errorCard(ev) {
+  const c = makeCard("apierr err", '<span class="badge">API ERROR ' + ev.status + '</span><span class="meta">' + fmtMs(ev.ms) + "</span>", {
+    sum: short(firstLine(ev.error), 160), open: true, more: longText(String(ev.error || "")) });
+  c.appendChild(el("div", "body", "<pre>" + esc(ev.error) + "</pre>"));
   return c;
 }
 
-// The result body: 3-line preview with a line count, expanding on click.
+function toolCard(blk, meta) {
+  const arg = mainArg(blk.input);
+  const c = makeCard("tool", '<span class="badge">TOOL CALL</span><span class="name mono">' + esc(blk.name || "?") +
+    '</span><span class="arg mono" title="' + esc(arg) + '">' + esc(short(arg, 300)) + "</span>" +
+    '<span class="rstat">awaiting result</span>' +
+    '<span class="meta">' + (meta ? meta + " · " : "") + esc(blk.id || "") + "</span>", { open: details.checked });
+  c.appendChild(el("div", "input", "<pre>" + esc(typeof blk.input === "string" ? blk.input : JSON.stringify(blk.input, null, 2)) + "</pre>"));
+  const slot = el("div", "rslot pending", "awaiting result…");
+  c.appendChild(slot);
+  if (blk.id) toolCards.set(blk.id, { card: c, slot, name: blk.name, rstat: c.querySelector(".rstat") });
+  return c;
+}
+
+// The result body: a 3-line preview with a line count; the full text shows when its card is expanded.
 function outBox(blk) {
   const text = textOf(blk.content);
   const lines = text.split("\n");
@@ -933,61 +1150,72 @@ function outBox(blk) {
     box.innerHTML = '<pre class="preview">' + withReminders(short(lines.slice(0, 3).join("\n"), 400)) + "</pre>" +
       '<pre class="full">' + withReminders(text) + "</pre>" +
       '<div class="more">' + lines.length.toLocaleString() + " lines · " + text.length.toLocaleString() + " chars · click to expand</div>";
-    box.onclick = (e) => { if (!e.target.closest("summary") && !getSelection().toString()) box.classList.toggle("open"); };
+    box.onclick = (e) => {
+      if (e.target.closest("summary, details") || String(getSelection())) return;
+      const c = box.closest(".card");
+      if (c) withAnchor(() => setCard(c, c.classList.contains("collapsed")));
+    };
   } else {
     box.innerHTML = "<pre>" + (text ? withReminders(text) : '<span class="chip">empty</span>') + "</pre>";
   }
-  return { box, lines: lines.length };
+  return { box, lines: lines.length, long };
 }
 
 function renderResult(blk) {
   const err = !!blk.is_error;
   const target = toolCards.get(blk.tool_use_id);
-  const { box, lines } = outBox(blk);
+  const { box, lines, long } = outBox(blk);
   const head = '<span class="badge">' + (err ? "TOOL ERROR" : "TOOL RESULT") + '</span><span class="meta mono">' + esc(blk.tool_use_id || "") + "</span>";
+  const count = lines.toLocaleString() + " line" + (lines === 1 ? "" : "s");
   if (target) {
     target.slot.className = "rslot" + (err ? " err" : "");
     target.slot.innerHTML = "";
     target.slot.appendChild(el("div", "rhead", head));
     target.slot.appendChild(box);
+    target.rstat.textContent = err ? "✗ error" : "✓ " + count;
+    target.rstat.classList.toggle("bad", err);
     if (err) target.card.classList.add("err");
     const pb = el("div", "pairbadge" + (err ? " err" : ""), '<span class="badge">' + (err ? "TOOL ERROR" : "TOOL RESULT") +
-      "</span>↳ " + esc(target.name || "") + " · " + lines.toLocaleString() + " line" + (lines === 1 ? "" : "s") +
-      ' <span class="mono">' + esc(blk.tool_use_id || "") + "</span>");
-    pb.onclick = () => { target.card.scrollIntoView({ behavior: "smooth", block: "center" });
-      target.card.classList.remove("flash"); void target.card.offsetWidth; target.card.classList.add("flash"); };
+      "</span>↓ " + esc(target.name || "") + " · " + count + ' <span class="mono">' + esc(blk.tool_use_id || "") + "</span>");
+    pb.onclick = () => {
+      const g = target.card.closest(".group");
+      if (g) setGroup(g, true);
+      setCard(target.card, true);
+      target.card.scrollIntoView({ behavior: "smooth", block: "center" });
+      flash(target.card);
+    };
     pb.dataset.search = target.card.textContent;
     return pb;
   }
-  const c = el("div", "card result" + (err ? " err" : ""));
-  c.appendChild(el("div", "head", head));
+  const c = makeCard("result" + (err ? " err" : ""), head, { open: details.checked, more: long });
   const b = el("div", "body"); b.appendChild(box); c.appendChild(b);
   return c;
 }
 
-// Render one message's content blocks into the stream.
+// One message's content blocks as cards, in their original order.
 function renderMessage(msg, meta) {
-  const blocks = blocksOf(msg.content);
+  const nodes = [], blocks = blocksOf(msg.content);
   if (msg.role === "assistant") {
     let group = [];
-    const flush = () => { if (group.length) { add(modelCard(group, meta)); meta = null; group = []; } };
+    const flush = () => { if (group.length) { nodes.push(modelCard(group, meta)); meta = null; group = []; } };
     for (const b of blocks) {
       if (b.type === "text" || b.type === "thinking" || b.type === "redacted_thinking") group.push(b);
-      else if (b.type === "tool_use" || b.type === "server_tool_use") { flush(); add(toolCard(b, meta)); meta = null; }
-      else if (b.type && b.type.endsWith("_tool_result")) { flush(); add(renderResult({ tool_use_id: b.tool_use_id, content: JSON.stringify(b.content, null, 2) })); }
+      else if (b.type === "tool_use" || b.type === "server_tool_use") { flush(); nodes.push(toolCard(b, meta)); meta = null; }
+      else if (b.type && b.type.endsWith("_tool_result")) { flush(); nodes.push(renderResult({ tool_use_id: b.tool_use_id, content: JSON.stringify(b.content, null, 2) })); }
     }
     flush();
-    if (meta) add(modelCard([], meta));
+    if (meta) nodes.push(modelCard([], meta));
   } else {
     let texts = [];
-    const flush = () => { if (texts.length) { add(userCard(texts.join("\n\n"))); texts = []; } };
+    const flush = () => { if (texts.length) { nodes.push(userCard(texts.join("\n\n"))); texts = []; } };
     for (const b of blocks) {
-      if (b.type === "tool_result") { flush(); add(renderResult(b)); }
+      if (b.type === "tool_result") { flush(); nodes.push(renderResult(b)); }
       else if (b.type === "text") texts.push(b.text || "");
       else texts.push("[" + (b.type || "block") + "]");
     }
     flush();
   }
+  return nodes;
 }
 
 // ---------- raw view ----------
@@ -1044,9 +1272,9 @@ function modelBlocks(content) {
 // ---------- harness calls ----------
 function onHarnessRequest(ev) {
   if (ev.kind === "aux") {
-    const c = el("div", "card harness");
-    c.appendChild(el("div", "head", '<span class="badge">HARNESS</span><span class="name mono">#' + ev.id + '</span><span class="arg" title="' +
-      esc(ev.label || "") + '">' + esc(ev.label || "") + '</span><span class="meta st"><span class="pulse"></span> ' + esc(ev.model || "") + " · waiting…</span>"));
+    const c = makeCard("harness", '<span class="badge">HARNESS</span><span class="name mono">#' + ev.id + '</span><span class="arg" title="' +
+      esc(ev.label || "") + '">' + esc(ev.label || "") + '</span><span class="meta st"><span class="pulse"></span> ' + esc(ev.model || "") + " · waiting…</span>",
+      { open: true });
     const b = el("div", "body");
     const msgs = ev.messages || [];
     const last = [...msgs].reverse().find((m) => m.role === "user");
@@ -1059,7 +1287,7 @@ function onHarnessRequest(ev) {
       msgs.map((m) => "── " + m.role + " ──\n" + messageText(m)).join("\n\n")));
     b.appendChild(rawBox(ev.id));
     c.appendChild(b);
-    add(c);
+    addTop(c);
     harness.set(ev.id, { kind: "aux", node: c, reply });
     return;
   }
@@ -1071,7 +1299,7 @@ function onHarnessRequest(ev) {
       esc(ev.method + " " + ev.path) + "</span>";
   r.appendChild(el("div", "line", what + '<span class="meta st">…</span>'));
   r.appendChild(rawBox(ev.id));
-  add(r);
+  addTop(r);
   harness.set(ev.id, { kind: ev.kind, node: r, req_bytes: ev.req_bytes });
 }
 
@@ -1095,28 +1323,47 @@ function onHarnessResponse(h, ev) {
   }
 }
 
-// ---------- events ----------
+// ---------- main conversation ----------
 function onRequest(ev) {
   if (ev.kind !== "main") { onHarnessRequest(ev); return; }
-  if (ev.new_conv) add(el("div", "divider conv", "<span>New Conversation · #" + ev.conv + "</span>"));
+  const conv = getConv(ev);
+  conv.requests++; conv.last = ev.time; conv.inflight.add(ev.id);
+  if (!conv.title) conv.title = titleFrom(ev.blocks);
+  if (selected != null && selected !== ev.conv) conv.newCount++;
+  renderEntry(conv);
+  if (ev.new_conv) {
+    const m = el("div", "marker conv", "<span>▲ New Conversation · #" + ev.conv + "</span>");
+    m.dataset.conv = ev.conv;
+    addTop(m);
+  }
   const chips = [];
   if ("system" in ev) { sys.system = ev.system; if (ev.system_changed) { sys.changed = true; chips.push("system changed"); } }
   if ("tools" in ev) { sys.tools = ev.tools; if (ev.tools_changed) { sys.changed = true; chips.push("tools changed"); } }
   if ("system" in ev || "tools" in ev) { renderDrawer(); updateSysBtn(); }
   const n = (ev.blocks || []).length;
-  const d = el("div", "divider", "<span>Request #" + ev.id + " · conv " + ev.conv + " · " + esc(ev.time) + " · " + esc(ev.model || "") +
-    " · " + (ev.in_flight ? "in flight at Clear" : n ? "+" + n + " new message" + (n === 1 ? "" : "s") : "retry, no new messages") + "</span>" +
-    chips.map((c) => '<span class="chip warn">' + c + "</span>").join(""));
-  d.querySelectorAll(".chip").forEach((c) => c.onclick = () => { drawer.classList.add("open"); sys.changed = false; updateSysBtn(); });
-  add(d);
+  const g = el("div", "group");
+  g.dataset.conv = ev.conv;
+  const h = el("div", "ghead", '<span class="chev" aria-hidden="true"></span><span class="gtitle">Request #' + ev.id + " · conv " + ev.conv +
+    " · " + esc(ev.time) + " · " + esc(ev.model || "") + " · " +
+    (ev.in_flight ? "in flight at Clear" : n ? "+" + n + " new message" + (n === 1 ? "" : "s") : "retry, no new messages") + "</span>" +
+    chips.map((c) => '<span class="chip warn">' + c + "</span>").join("") + '<span class="gsum"></span>');
+  h.querySelectorAll(".chip").forEach((c) => c.onclick = () => { drawer.classList.add("open"); sys.changed = false; updateSysBtn(); });
+  bindHead(h, () => setGroup(g, g.classList.contains("collapsed")));
+  h.setAttribute("aria-expanded", "true");
   const rl = el("div", "rawline");
   rl.appendChild(rawBox(ev.id, "Raw #" + ev.id));
-  add(rl);
-  for (const m of ev.blocks || []) renderMessage(m, null);
+  const gb = el("div", "gbody"), resp = el("div", "resp"), msgs = el("div", "msgs");
+  gb.append(resp, msgs);
+  g.append(h, rl, gb);
+  // Render in sent order (so tool results find their calls), then show the last message first.
+  const perMessage = (ev.blocks || []).map((m) => renderMessage(m, null));
+  for (const nodes of perMessage.reverse()) msgs.append(...nodes);
   const w = el("div", "waiting", '<span class="pulse"></span><span>Waiting for Claude… <span class="el">0.0s</span></span>');
   w.dataset.t0 = Date.now();
+  resp.appendChild(w);
   pending.set(ev.id, w);
-  add(w);
+  groups.set(ev.id, g);
+  addTop(g);
 }
 
 function onResponse(ev) {
@@ -1124,18 +1371,24 @@ function onResponse(ev) {
   if (h) { onHarnessResponse(h, ev); return; }
   const w = pending.get(ev.id);
   if (w) { w.remove(); pending.delete(ev.id); }
-  if (ev.error) {
-    const c = el("div", "card err");
-    c.appendChild(el("div", "head", '<span class="badge">API ERROR ' + ev.status + '</span><span class="meta">' + fmtMs(ev.ms) + "</span>"));
-    c.appendChild(el("div", "body", "<pre>" + esc(ev.error) + "</pre>"));
-    add(c);
-    return;
+  const g = groups.get(ev.id);
+  if (!g) return;
+  const conv = convs.get(+g.dataset.conv);
+  if (conv) { conv.inflight.delete(ev.id); conv.err = !!ev.error; renderEntry(conv); }
+  let nodes;
+  if (ev.error) nodes = [errorCard(ev)];
+  else {
+    const u = ev.usage || {};
+    const inTok = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+    const meta = [esc(ev.model || ""), fmtMs(ev.ms), inTok ? inTok.toLocaleString() + " in" : "",
+      u.output_tokens ? u.output_tokens.toLocaleString() + " out" : "", esc(ev.stop_reason || "")].filter(Boolean).join(" · ");
+    nodes = renderMessage({ role: "assistant", content: ev.content || [] }, meta);
   }
-  const u = ev.usage || {};
-  const inTok = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-  const meta = [esc(ev.model || ""), fmtMs(ev.ms), inTok ? inTok.toLocaleString() + " in" : "",
-    u.output_tokens ? u.output_tokens.toLocaleString() + " out" : "", esc(ev.stop_reason || "")].filter(Boolean).join(" · ");
-  renderMessage({ role: "assistant", content: ev.content || [] }, meta);
+  const resp = g.querySelector(".resp");
+  for (const node of nodes) addInto(resp, node);
+  // A late response lands in its own (older) group; flash it so it gets noticed.
+  if (g !== stream.querySelector(".group")) nodes.forEach(flash);
+  if (g.classList.contains("collapsed")) g.querySelector(".gsum").textContent = groupSummary(g);
 }
 
 setInterval(() => {
@@ -1152,15 +1405,25 @@ function connect() {
     online();
     mutate(() => {
       if (ev.type === "reset") {
-        resetState();
+        resetState(); resetSessions();
+        const want = location.hash.match(/conv=(\d+)/);
+        wantConv = want ? +want[1] : null;
+        // If the conversation in the address never shows up in the replay, fall back to All.
+        setTimeout(() => {
+          if (wantConv != null && !convs.has(wantConv)) history.replaceState(null, "", location.pathname + location.search);
+          wantConv = null;
+        }, 2000);
         stream.innerHTML = '<p class="empty" id="empty">Waiting for traffic… run <code>ANTHROPIC_BASE_URL=' + esc(location.origin) + " claude</code></p>";
         drawer.innerHTML = ""; updateSysBtn();
+        window.scrollTo(0, 0);
       } else if (ev.type === "cleared") onCleared(ev);
       else if (ev.type === "request") onRequest(ev);
       else if (ev.type === "response") onResponse(ev);
+      if (q.value.trim()) applyFilter();
     }, ev.type === "reset" || ev.type === "cleared");
   };
 }
+resetSessions();
 updateSysBtn();
 connect();
 </script>
