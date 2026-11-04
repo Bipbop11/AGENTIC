@@ -1,13 +1,14 @@
 # Spec History
 
-This file traces how `SPEC.md` for the Proxy Traffic Dashboard changed, and why. It was written by the coding agent (Claude Code) from the working session and the git history of https://github.com/Bipbop11/AGENTIC.
+This file traces how `SPEC.md` for the Proxy Traffic Dashboard changed, and why. It was written by the coding agent (Claude Code) from the working session and the git history of https://github.com/Bipbop11/AGENTIC. Both partners changed the spec: Bipbop11 drove v1–v3, and Artureeez wrote v4 in pull request #1.
 
 | Version | Date | Change | Driven by | Status |
 |---|---|---|---|---|
 | v0 | 2026-11-03 | Initial spec with five Open Decisions | Lab handout | Given |
 | v1 | 2026-11-03 | Open Decisions locked into Decisions | User and agent review | Implemented, commit `9625b59` |
 | v2 | 2026-11-04 | **Clear** button and `POST /clear` | User feature request | Implemented, commit `95d395f` |
-| v3 | 2026-11-04 | All harness calls shown, plus a Raw view | User feature request | Implemented |
+| v3 | 2026-11-04 | All harness calls shown, plus a Raw view | User feature request (Bipbop11) | Implemented, commit `de44317` |
+| v4 | 2026-11-04 | Newest-first order, collapsible cards, **Sessions** sidebar | Partner's pull request #1 (Artureeez) | Spec only, merged into v3; not yet implemented |
 
 ---
 
@@ -96,8 +97,67 @@ It ended with five **Open Decisions** left for the team to settle:
 - **New test:** `tests/test_harness.py` covers each kind of call, the single counter, the Raw view (including secret redaction), the 200-call cap, and Clear dropping raw bodies. It passes, and so do the existing tests.
 - **Test fix:** `tests/test_clear.py` was made safe to rerun against the same proxy.
 
+## v4: Newest first, collapsible cards, Sessions sidebar (Artureeez, spec only)
+
+**Author and route:** Artureeez wrote this change on the branch `spec-newest-first-collapsible` and opened it as pull request #1. It had two commits:
+- `2b2e2bf` (10:47): newest-first message order and expandable/collapsible cards.
+- `24140de` (10:58): the Sessions sidebar.
+
+The branch started from v2 (commit `95d395f`). That was before v3 and before `spec.md` was renamed to `SPEC.md`, so it conflicted with `main` and was merged by hand (see *Merging v4 with v3* below).
+
+**What the spec gained (all browser-only, so `proxy.py` and the event format do not change):**
+- **New goals:**
+  - **You control the detail:** every card and every request group can be expanded or collapsed.
+  - **Find a conversation fast:** a **Sessions** sidebar lists the conversations.
+  - The **Follow the conversation** goal now says the newest messages appear at the top.
+- **New section, "Message Order: Newest First":**
+  - New request groups and other top-level items go at the top of the stream.
+  - Inside a request group, the `Request #N` header comes first, then the model's response (or the `Waiting for Claude...` indicator), then the new messages, last message first.
+  - The blocks of one message keep their original order, and a late response stays in its own group.
+  - Markers are labeled with an up arrow (`▲ New Conversation · #N`, `▲ Cleared at HH:MM:SS`) because they sit below what came after them.
+  - Scroll anchoring keeps the card you are reading in place, and **Jump to Latest ↑ (N new)** replaces **Jump to Live ↓**.
+  - Replay after a refresh builds the same layout and ends scrolled to the top.
+- **New section, "Expanding and Collapsing Cards":**
+  - Each card header has a ▸/▾ chevron and works with the keyboard (`Enter`/`Space`, `aria-expanded`).
+  - A table defines each card type's collapsed view, expanded view and default. The defaults match the previous view, so nothing changes until you click.
+  - A whole `Request #N` group can collapse to one line with a short count of what's inside.
+  - New **Expand all** and **Collapse all** buttons. **Tool Details** now sets the state of every tool card.
+  - The state is per tab and is never sent to `proxy.py`.
+- **New section, "Sessions: Conversation List":**
+  - A sidebar (an overlay drawer at phone width) lists the run's conversations newest first, under an **All** entry.
+  - Each entry has a title (taken from the first user prompt), a request count, last-activity time, and a live or error dot.
+  - Selecting an entry hides everything else instead of rebuilding the stream, and shows new-activity counts for the other conversations.
+  - After a Clear, a continuing conversation comes back marked `continued`.
+  - The choice is kept in the page address (`#conv=N`).
+- **New Decisions:**
+  - **6:** reverse the order per message, not per card.
+  - **7:** keep the expand/collapse state in the browser only.
+  - **8:** sessions reuse the conversation numbers `proxy.py` already assigns.
+- **Updated text:** Decisions 1, 2, 4 and 5, Steps to Build, and the Clear section were updated for the newest-first layout and the `▲` markers.
+
+### Merging v4 with v3
+
+Both versions changed the same parts of the spec, so the merge kept both sides and adjusted Artureeez's sections to fit v3:
+- **Conflicts resolved:**
+  - **Goal:** kept the newest-first wording from v4 and the **Nothing hidden** goal from v3.
+  - **Quick filters:** the v4 text plus the `Harness` toggle from v3.
+  - **Clear:** kept v3's "raw bodies are cleared" rule and v4's `▲ Cleared at` marker.
+  - **Steps to Build:** v3's harness step stays step 5, v4's steps become 6–8, and one combined test step 9 covers both, plus `tests/test_clear.py` and `tests/test_harness.py`.
+  - **Decision 5:** kept v4's `▲ New Conversation · #N` marker. Its sentence about "side requests as compact one-line rows" was replaced with v3's harness-calls sentence, because v3 had already dropped those rows.
+- **v4 text updated to fit v3:**
+  - Top-level items now include harness calls (**HARNESS** cards, **COUNT** and **HTTP** rows) instead of side-request rows.
+  - The expand/collapse table gained a **HARNESS** row (expanded by default). **COUNT** and **HTTP** rows stay one line, with only their **Raw** expander.
+  - **Expand all** never opens **Raw** expanders, so it never fetches raw bodies in bulk.
+  - Each request group keeps its **Raw** expander right under the `Request #N` header.
+  - In the Sessions sidebar, harness calls belong to no conversation and are shown only under **All**. The **Harness** filter applies to the selected conversation like the other filters.
+  - The note on browser-only data now says `conv` is sent with every main-conversation request event (`kind: "main"`).
+  - The Harness Calls section now says the shared stream is newest first instead of chronological.
+
+**Status:** merged into `main` as spec only. `proxy.py` still renders the stream oldest first, with no expand/collapse toggles on every card and no Sessions sidebar.
+
 ## Process notes
 
-- **Spec before code:** each change was made to the spec first and implemented only afterwards (v1 and v2). v3 followed the same path: spec first (commit `77205be`), then the implementation.
+- **Spec before code:** each change was made to the spec first and implemented only afterwards (v1 and v2). v3 followed the same path: spec first (commit `77205be`), then the implementation. v4 is still at the spec stage.
 - **Decisions reviewed before implementation:** the user asked to review and lock the Open Decisions before any code was written. The agent recommended an option for each, and the user confirmed them.
 - **Recorded in the spec:** behaviour the agent added during implementation, such as the side-request rows in v1 and the Clear edge cases in v2, was written back into the spec so the spec stays the source of truth.
+- **Two partners, one spec:** v4 was written in parallel on a branch and reviewed as a pull request. Merging it after v3 needed the conflicts resolved by hand. The merge kept both partners' features and rewrote the places where v4 still described the old side-request rows.
