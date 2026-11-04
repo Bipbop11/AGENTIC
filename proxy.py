@@ -13,8 +13,8 @@ printed to the terminal. The proxy changes nothing: headers go through untouched
 and the reply is streamed back byte for byte as it arrives.
 
 Open http://localhost:8041 in a browser for a live dashboard of the decoded
-conversation (see SPEC.md). `GET /` and `GET /events` are served locally; every
-other path is forwarded.
+conversation (see SPEC.md). `GET /`, `GET /events` and `POST /clear` are served
+locally; every other path is forwarded.
 
     python3 proxy.py --port 9000
     python3 proxy.py --upstream https://chatgpt.com/backend-api/codex   # for Codex
@@ -161,12 +161,33 @@ class Traffic:
         self.conversations = 0
         self.system_hash: str | None = None
         self.tools_hash: str | None = None
+        self.system: object = None  # latest values, re-sent after a Clear
+        self.tools: object = None
+        self.in_flight: dict[int, dict] = {}  # request id -> request event
+
+    def broadcast(self, event: dict) -> None:
+        """Store and fan out one event. Caller holds the lock."""
+        self.history.append(event)
+        for q in self.clients:
+            q.put(event)
 
     def publish(self, event: dict) -> None:
         with self.lock:
-            self.history.append(event)
-            for q in self.clients:
-                q.put(event)
+            if event["type"] == "request":
+                self.in_flight[event["id"]] = event
+            elif event["type"] == "response":
+                self.in_flight.pop(event["id"], None)
+            self.broadcast(event)
+
+    def clear(self) -> None:
+        """Drop the replay history but keep the dedup snapshots, counters and system/tools."""
+        with self.lock:
+            self.history = []
+            self.broadcast({"type": "cleared", "time": stamp(), "system": self.system, "tools": self.tools})
+            for ev in self.in_flight.values():
+                # Keep the waiting indicator; the messages were already shown before the Clear.
+                stub = {k: ev[k] for k in ("type", "id", "time", "model", "side", "conv") if k in ev}
+                self.broadcast(dict(stub, blocks=[], in_flight=True))
 
     def subscribe(self) -> tuple[queue.Queue, list[dict]]:
         q: queue.Queue = queue.Queue()
@@ -221,6 +242,7 @@ class Traffic:
                 ev.update(conv=conv, start=start, blocks=strip_cache(messages[start:]))
                 system = strip_cache(data.get("system"))
                 tools = strip_cache(data.get("tools"))
+                self.system, self.tools = system, tools
                 h = digest(system)
                 if h != self.system_hash:
                     ev["system"] = system
@@ -242,7 +264,10 @@ class Traffic:
         if status >= 400:
             ev["error"] = raw.decode("utf-8", "replace")[:4000]
         else:
-            msg = parse_sse(raw) if "event-stream" in ctype else json.loads(raw or b"{}")
+            try:
+                msg = parse_sse(raw) if "event-stream" in ctype else json.loads(raw or b"{}")
+            except ValueError:
+                msg = {"error": "proxy: could not decode the response body"}
             ev.update(
                 model=msg.get("model"), content=msg.get("content") or [],
                 stop_reason=msg.get("stop_reason"), usage=msg.get("usage"),
@@ -280,7 +305,10 @@ class Tap(BaseHTTPRequestHandler):
         pass  # we print our own lines
 
     def do_POST(self) -> None:
-        self.relay()
+        if urlsplit(self.path).path == "/clear":
+            self.serve_clear()
+        else:
+            self.relay()
 
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
@@ -302,6 +330,16 @@ class Tap(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(page)
+
+    def serve_clear(self) -> None:
+        length = int(self.headers.get("content-length") or 0)
+        if length:
+            self.rfile.read(length)
+        TRAFFIC.clear()
+        print(f"\n[{stamp()}] --- dashboard cleared", flush=True)
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def serve_events(self) -> None:
         q, backlog = TRAFFIC.subscribe()
@@ -545,6 +583,7 @@ body.no-system details.reminder, body.no-system .side, body.no-system .side-full
     <label><input type="checkbox" id="f-system" checked> System</label>
     <label><input type="checkbox" id="f-thinking" checked> Thinking</label>
     <label><input type="checkbox" id="f-details"> Tool Details</label>
+    <button id="clearbtn" title="Clear the view (the proxy keeps tracking the conversation)">Clear</button>
     <input type="search" id="q" placeholder="Filter cards…">
   </div>
   <div id="drawer"></div>
@@ -656,8 +695,8 @@ function md(src) {
 
 // ---------- scrolling ----------
 function atBottom() { return window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80; }
-function mutate(fn) {
-  const stick = atBottom();
+function mutate(fn, force) {
+  const stick = force || atBottom();
   fn();
   if (stick) window.scrollTo(0, document.documentElement.scrollHeight);
   else { unseen++; jump.textContent = "Jump to Live ↓ (" + unseen + " new)"; jump.classList.add("show"); }
@@ -694,6 +733,17 @@ function applyFilter(node) {
 q.oninput = () => applyFilter();
 
 // ---------- system & tools drawer ----------
+$("#clearbtn").onclick = () => {
+  fetch("/clear", { method: "POST" }).catch(() => {});
+};
+function onCleared(ev) {
+  resetState();
+  sys.system = ev.system; sys.tools = ev.tools;
+  stream.innerHTML = "";
+  jump.classList.remove("show");
+  add(el("div", "divider conv", "<span>Cleared at " + esc(ev.time) + "</span>"));
+  renderDrawer(); updateSysBtn();
+}
 $("#sysbtn").onclick = () => {
   drawer.classList.toggle("open");
   sys.changed = false; updateSysBtn();
@@ -856,7 +906,7 @@ function onRequest(ev) {
   if ("system" in ev || "tools" in ev) { renderDrawer(); updateSysBtn(); }
   const n = (ev.blocks || []).length;
   const d = el("div", "divider", "<span>Request #" + ev.id + " · conv " + ev.conv + " · " + esc(ev.time) + " · " + esc(ev.model || "") +
-    " · " + (n ? "+" + n + " new message" + (n === 1 ? "" : "s") : "retry, no new messages") + "</span>" +
+    " · " + (ev.in_flight ? "in flight at Clear" : n ? "+" + n + " new message" + (n === 1 ? "" : "s") : "retry, no new messages") + "</span>" +
     chips.map((c) => '<span class="chip warn">' + c + "</span>").join(""));
   d.querySelectorAll(".chip").forEach((c) => c.onclick = () => { drawer.classList.add("open"); sys.changed = false; updateSysBtn(); });
   add(d);
@@ -908,9 +958,10 @@ function connect() {
         resetState();
         stream.innerHTML = '<p class="empty" id="empty">Waiting for traffic… run <code>ANTHROPIC_BASE_URL=' + esc(location.origin) + " claude</code></p>";
         drawer.innerHTML = ""; updateSysBtn();
-      } else if (ev.type === "request") onRequest(ev);
+      } else if (ev.type === "cleared") onCleared(ev);
+      else if (ev.type === "request") onRequest(ev);
       else if (ev.type === "response") onResponse(ev);
-    });
+    }, ev.type === "reset" || ev.type === "cleared");
   };
 }
 updateSysBtn();

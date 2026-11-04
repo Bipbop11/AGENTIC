@@ -2,13 +2,14 @@
 
 Streams SSE replies: a thinking block plus a Read tool call on the first turn,
 a Markdown text reply once a tool_result arrives (or for tool-less requests),
-and a 529 error when the last message contains "fail".
+a 529 error when the last message contains "fail", and a 2-second delay when
+it contains "slow".
 
     python3 tests/fake_upstream.py 8942
     python3 proxy.py --port 8941 --upstream http://127.0.0.1:8942
     python3 tests/client.py        # then open http://localhost:8941
 """
-import json, sys
+import json, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 def sse(events):
@@ -25,6 +26,8 @@ class H(BaseHTTPRequestHandler):
             self.send_response(529); self.send_header("content-type", "application/json")
             self.send_header("content-length", str(len(out))); self.end_headers(); self.wfile.write(out); return
         last = msgs[-1]["content"]
+        if "slow" in json.dumps(last):
+            time.sleep(2)
         has_result = isinstance(last, list) and any(b.get("type") == "tool_result" for b in last)
         ev = [{"type": "message_start", "message": {"id": "m1", "model": body["model"], "role": "assistant", "content": [], "usage": {"input_tokens": 50, "output_tokens": 1}}}]
         if has_result or not body.get("tools"):
