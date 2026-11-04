@@ -59,7 +59,7 @@ Other features:
 - Streamed responses are put back together into complete text, thinking and `tool_use` blocks before they are sent to the browser.
 - A dashboard error can never break proxying. It only prints a line to stderr.
 
-See [`spec.md`](spec.md) for the full design and the decisions behind it.
+See [`SPEC.md`](SPEC.md) for the full design and the decisions behind it.
 
 ## Testing without an API key
 

@@ -1,6 +1,6 @@
 # Spec History
 
-This file traces how `SPEC.md` (stored in the repo as `spec.md`) for the Proxy Traffic Dashboard changed, and why. It was written by the coding agent (Claude Code) from the working session and the git history of https://github.com/Bipbop11/AGENTIC.
+This file traces how `SPEC.md` for the Proxy Traffic Dashboard changed, and why. It was written by the coding agent (Claude Code) from the working session and the git history of https://github.com/Bipbop11/AGENTIC.
 
 | Version | Date | Change | Driven by | Status |
 |---|---|---|---|---|
